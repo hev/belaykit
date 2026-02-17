@@ -1,0 +1,17 @@
+{
+  "trace_id": "64b2f4e7-24ff-4760-ab0f-c55b50ef49f3",
+  "project_dir": "/Users/hev/workspace/go-claude",
+  "started_at": "2026-02-16T13:28:46.153570+00:00",
+  "git_branch": "main",
+  "prompts": [
+    {
+      "sequence": 1,
+      "timestamp": "2026-02-16T13:28:46.153788+00:00",
+      "prompt_text": "I want to enhance the mata logging in the following ways.\n\n1. Show what system hooks fire.\n2. Make % of context more front and center and showcase in a thermobar (this is most of what I care about when monitoring runs).\n3. Indent tool use under assistant completion calls to show hiearchy of tool use.\n4. When an assistant session starts draw the [assitant] part before the call so we now it's waiting on a LLM call if it's paused.\n5. Move the model and agent name into the [assistant/tool] part and make the meta data part purely metrics. ",
+      "git_sha": "17b563d",
+      "git_sha_full": "17b563db2b6e852b2f8e451707ad09e258419318",
+      "files_changed": [],
+      "files_staged": []
+    }
+  ]
+}

@@ -3,6 +3,7 @@ package claude
 import (
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,11 +17,13 @@ const (
 	colorMagenta = "\033[35m"
 	colorBoldRed = "\033[1;31m"
 	colorYellow  = "\033[33m"
+	colorDim     = "\033[2m"
 )
 
 const (
 	maxToolInputLen  = 200
 	maxToolResultLen = 500
+	thermobarWidth   = 20
 )
 
 // LoggerOption configures a Logger.
@@ -87,15 +90,13 @@ func WithContextWindow(tokens int) LoggerOption {
 	return func(cfg *loggerConfig) { cfg.contextWindow = tokens }
 }
 
-// WithAgentName sets the agent name displayed as a prefix in token tracking stats.
-// Has no effect unless LogTokens is enabled.
+// WithAgentName sets the agent name displayed in the event prefix tag.
 func WithAgentName(name string) LoggerOption {
 	return func(cfg *loggerConfig) { cfg.agentName = name }
 }
 
-// WithModelName sets the model name displayed in token tracking stats.
+// WithModelName sets the model name displayed in the event prefix tag.
 // Also sets pricing and context window for the model automatically.
-// Has no effect unless LogTokens is enabled.
 func WithModelName(name string) LoggerOption {
 	return func(cfg *loggerConfig) {
 		cfg.modelName = name
@@ -106,6 +107,11 @@ func WithModelName(name string) LoggerOption {
 
 // NewLogger returns an EventHandler that writes color-coded log lines to w.
 // All event types are enabled by default; use LoggerOption functions to disable specific types.
+//
+// Output format uses a hierarchical layout where tool use and results are
+// indented under assistant turn headers. The assistant prefix includes model
+// and agent names (e.g. [assistant:opus:researcher]) while the stats block
+// contains only metrics. A thermobar visualizes context window usage.
 func NewLogger(w io.Writer, opts ...LoggerOption) EventHandler {
 	cfg := loggerConfig{
 		system:        true,
@@ -126,144 +132,214 @@ func NewLogger(w io.Writer, opts ...LoggerOption) EventHandler {
 		now = cfg.clock
 	}
 
+	// Build the assistant prefix tag with model/agent names.
+	// e.g. [assistant], [assistant:opus], [assistant:opus:researcher]
+	assistantPrefix := buildTagPrefix("assistant", cfg.modelName, cfg.agentName)
+
 	var mu sync.Mutex
 	sessionStart := now()
 	var inputTokens, outputTokens int
+	var inTurn bool
 
 	return func(e Event) {
-		// Reset per-session counters when a new session starts
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Reset per-session counters when a new session starts.
 		if e.Type == EventSystem && e.Subtype == "init" {
-			mu.Lock()
 			inputTokens = 0
 			outputTokens = 0
 			sessionStart = now()
-			mu.Unlock()
+			inTurn = false
 		}
 
-		var color, prefix, body string
+		// Always count tokens when tracking is enabled.
+		if cfg.tokens {
+			in, out := classifyEventTokens(e)
+			inputTokens += in
+			outputTokens += out
+		}
 
 		switch e.Type {
 		case EventSystem:
-			if !cfg.system {
+			// System/hook logging is currently disabled — the client doesn't
+			// expose hook functionality yet so these events are just noise.
+			// Uncomment the block below when hook support is added.
+			//
+			// if !cfg.system {
+			// 	return
+			// }
+			// tag := "[system"
+			// if e.Subtype != "" {
+			// 	tag += ":" + e.Subtype
+			// }
+			// tag += "]"
+			// var body string
+			// if cfg.content && e.SessionID != "" {
+			// 	body = " session=" + e.SessionID
+			// }
+			// w.Write([]byte(fmt.Sprintf("%s%s%s%s\n", colorGray, tag, colorReset, body)))
+			return
+
+		case EventAssistantStart:
+			if !cfg.assistant {
 				return
 			}
-			color = colorGray
-			prefix = "[system]"
-			body = e.Subtype
-			if e.SessionID != "" {
-				body += " session=" + e.SessionID
+			inTurn = true
+			line := fmt.Sprintf("%s%s%s", colorGreen, assistantPrefix, colorReset)
+			if cfg.tokens {
+				line += "  " + formatThermobar(inputTokens+outputTokens, cfg.contextWindow)
+				line += "  " + formatMetrics(cfg, inputTokens, outputTokens, now().Sub(sessionStart))
 			}
+			w.Write([]byte(line + "\n"))
+
 		case EventAssistant:
 			if !cfg.assistant {
 				return
 			}
-			color = colorGreen
-			prefix = "[assistant]"
-			body = e.Text
+			if !inTurn {
+				inTurn = true
+				header := fmt.Sprintf("%s%s%s", colorGreen, assistantPrefix, colorReset)
+				if cfg.tokens {
+					header += "  " + formatThermobar(inputTokens+outputTokens, cfg.contextWindow)
+					header += "  " + formatMetrics(cfg, inputTokens, outputTokens, now().Sub(sessionStart))
+				}
+				w.Write([]byte(header + "\n"))
+			}
+			if cfg.content {
+				w.Write([]byte("  " + e.Text + "\n"))
+			}
+
 		case EventToolUse:
 			if !cfg.toolUse {
 				return
 			}
-			color = colorCyan
-			prefix = "[tool_use]"
-			body = e.ToolName
-			if len(e.ToolInput) > 0 {
-				input := string(e.ToolInput)
-				body += " " + truncate(input, maxToolInputLen)
+			if !inTurn {
+				if cfg.assistant {
+					inTurn = true
+					header := fmt.Sprintf("%s%s%s", colorGreen, assistantPrefix, colorReset)
+					if cfg.tokens {
+						header += "  " + formatThermobar(inputTokens+outputTokens, cfg.contextWindow)
+						header += "  " + formatMetrics(cfg, inputTokens, outputTokens, now().Sub(sessionStart))
+					}
+					w.Write([]byte(header + "\n"))
+				}
 			}
+			indent := "  "
+			if !inTurn {
+				indent = ""
+			}
+			body := " " + e.ToolName
+			if cfg.content && len(e.ToolInput) > 0 {
+				body += " " + truncate(string(e.ToolInput), maxToolInputLen)
+			}
+			w.Write([]byte(fmt.Sprintf("%s%s[tool_use]%s%s\n", indent, colorCyan, colorReset, body)))
+
 		case EventToolResult:
 			if !cfg.toolResult {
 				return
 			}
-			color = colorBlue
-			prefix = "[tool_result]"
-			body = truncate(e.Text, maxToolResultLen)
+			indent := "  "
+			if !inTurn {
+				indent = ""
+			}
+			var body string
+			if cfg.content {
+				body = " " + truncate(e.Text, maxToolResultLen)
+			}
+			w.Write([]byte(fmt.Sprintf("%s%s[tool_result]%s%s\n", indent, colorBlue, colorReset, body)))
+
 		case EventResult:
 			if !cfg.result {
 				return
 			}
-			color = colorMagenta
-			prefix = "[result]"
-			body = fmt.Sprintf("turns=%d duration=%dms", e.NumTurns, e.Duration)
+			inTurn = false
+			body := fmt.Sprintf(" turns=%d duration=%dms", e.NumTurns, e.Duration)
+			line := fmt.Sprintf("%s[result]%s%s", colorMagenta, colorReset, body)
+			if cfg.tokens {
+				line += "  " + formatThermobar(inputTokens+outputTokens, cfg.contextWindow)
+				line += "  " + formatMetrics(cfg, inputTokens, outputTokens, now().Sub(sessionStart))
+			}
+			w.Write([]byte(line + "\n"))
+
 		case EventResultError:
 			if !cfg.result {
 				return
 			}
-			color = colorBoldRed
-			prefix = "[error]"
-			body = e.Text
+			inTurn = false
+			var body string
+			if cfg.content {
+				body = " " + e.Text
+			}
+			w.Write([]byte(fmt.Sprintf("%s[error]%s%s\n", colorBoldRed, colorReset, body)))
+
 		default:
 			return
 		}
-
-		var line string
-		if cfg.content {
-			line = fmt.Sprintf("%s%s%s %s", color, prefix, colorReset, body)
-		} else {
-			line = fmt.Sprintf("%s%s%s", color, prefix, colorReset)
-		}
-
-		if cfg.tokens {
-			// Estimate tokens and classify as input or output
-			in, out := classifyEventTokens(e)
-
-			mu.Lock()
-			inputTokens += in
-			outputTokens += out
-			totalTokens := inputTokens + outputTokens
-			elapsed := now().Sub(sessionStart)
-			pct := float64(totalTokens) / float64(cfg.contextWindow) * 100
-			cost := cfg.pricing.Cost(inputTokens, outputTokens)
-
-			var labelPrefix string
-			switch {
-			case cfg.agentName != "" && cfg.modelName != "":
-				labelPrefix = cfg.agentName + " | " + cfg.modelName + " | "
-			case cfg.agentName != "":
-				labelPrefix = cfg.agentName + " | "
-			case cfg.modelName != "":
-				labelPrefix = cfg.modelName + " | "
-			}
-
-			var stats string
-			if labelPrefix != "" {
-				stats = fmt.Sprintf(" %s[%s~%s in + ~%s out / %s (%.1f%%) | $%.4f | %s]%s",
-					colorYellow,
-					labelPrefix,
-					formatTokenCount(inputTokens),
-					formatTokenCount(outputTokens),
-					formatTokenCount(cfg.contextWindow),
-					pct,
-					cost,
-					formatDuration(elapsed),
-					colorReset,
-				)
-			} else {
-				stats = fmt.Sprintf(" %s[~%s in + ~%s out / %s (%.1f%%) | $%.4f | %s]%s",
-					colorYellow,
-					formatTokenCount(inputTokens),
-					formatTokenCount(outputTokens),
-					formatTokenCount(cfg.contextWindow),
-					pct,
-					cost,
-					formatDuration(elapsed),
-					colorReset,
-				)
-			}
-			line += stats
-			mu.Unlock()
-
-			line += "\n"
-			mu.Lock()
-			w.Write([]byte(line))
-			mu.Unlock()
-		} else {
-			line += "\n"
-			mu.Lock()
-			w.Write([]byte(line))
-			mu.Unlock()
-		}
 	}
+}
+
+// buildTagPrefix builds a bracket-delimited tag with optional model and agent suffixes.
+// e.g. buildTagPrefix("assistant", "opus", "researcher") => "[assistant:opus:researcher]"
+func buildTagPrefix(tag, model, agent string) string {
+	parts := []string{tag}
+	if model != "" {
+		parts = append(parts, model)
+	}
+	if agent != "" {
+		parts = append(parts, agent)
+	}
+	return "[" + strings.Join(parts, ":") + "]"
+}
+
+// formatThermobar renders a visual progress bar for context window usage.
+// Uses colored block characters: green < 65%, yellow 65-85%, red > 85%.
+func formatThermobar(totalTokens, contextWindow int) string {
+	pct := float64(totalTokens) / float64(contextWindow) * 100
+	if pct > 100 {
+		pct = 100
+	}
+	if pct < 0 {
+		pct = 0
+	}
+	filled := int(pct / 100 * float64(thermobarWidth))
+	if filled > thermobarWidth {
+		filled = thermobarWidth
+	}
+
+	var barColor string
+	switch {
+	case pct >= 85:
+		barColor = colorBoldRed
+	case pct >= 65:
+		barColor = colorYellow
+	default:
+		barColor = colorGreen
+	}
+
+	return fmt.Sprintf("%s%s%s%s%s %s%.1f%%%s",
+		barColor,
+		strings.Repeat("█", filled),
+		colorDim,
+		strings.Repeat("░", thermobarWidth-filled),
+		colorReset,
+		barColor,
+		pct,
+		colorReset,
+	)
+}
+
+// formatMetrics renders the stats block with only metrics (tokens, cost, duration).
+func formatMetrics(cfg loggerConfig, inputTokens, outputTokens int, elapsed time.Duration) string {
+	cost := cfg.pricing.Cost(inputTokens, outputTokens)
+	return fmt.Sprintf("%s~%s in + ~%s out | $%.4f | %s%s",
+		colorYellow,
+		formatTokenCount(inputTokens),
+		formatTokenCount(outputTokens),
+		cost,
+		formatDuration(elapsed),
+		colorReset,
+	)
 }
 
 // classifyEventTokens estimates token counts for an event, split into
@@ -282,6 +358,8 @@ func classifyEventTokens(e Event) (input, output int) {
 	case EventSystem:
 		// System prompt / init overhead
 		return EstimateTokens(e.Subtype) + EstimateTokens(e.SessionID), 0
+	case EventAssistantStart:
+		return 0, 0
 	default:
 		return EstimateTokens(e.Text), 0
 	}

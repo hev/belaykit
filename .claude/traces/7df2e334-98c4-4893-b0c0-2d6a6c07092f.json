@@ -1,0 +1,46 @@
+{
+  "trace_id": "7df2e334-98c4-4893-b0c0-2d6a6c07092f",
+  "project_dir": "/Users/hev/workspace/go-claude",
+  "started_at": "2026-02-17T14:21:31.258532+00:00",
+  "git_branch": "main",
+  "prompts": [
+    {
+      "sequence": 1,
+      "timestamp": "2026-02-17T14:21:31.258653+00:00",
+      "prompt_text": "I want to add untracked files and push to the repo",
+      "git_sha": "17b563d",
+      "git_sha_full": "17b563db2b6e852b2f8e451707ad09e258419318",
+      "files_changed": [
+        {
+          "status": "M",
+          "path": "logger_test.go"
+        }
+      ],
+      "files_staged": [
+        {
+          "status": "M",
+          "path": "ogger.go"
+        }
+      ]
+    },
+    {
+      "sequence": 2,
+      "timestamp": "2026-02-17T14:22:18.823987+00:00",
+      "prompt_text": "Yes. That all looks good. Commit message can essentially be initial commit",
+      "git_sha": "17b563d",
+      "git_sha_full": "17b563db2b6e852b2f8e451707ad09e258419318",
+      "files_changed": [
+        {
+          "status": "M",
+          "path": "logger_test.go"
+        }
+      ],
+      "files_staged": [
+        {
+          "status": "M",
+          "path": "ogger.go"
+        }
+      ]
+    }
+  ]
+}

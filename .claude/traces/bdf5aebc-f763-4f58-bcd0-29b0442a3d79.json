@@ -1,0 +1,17 @@
+{
+  "trace_id": "bdf5aebc-f763-4f58-bcd0-29b0442a3d79",
+  "project_dir": "/Users/hev/workspace/go-claude",
+  "started_at": "2026-02-15T12:08:56.284317+00:00",
+  "git_branch": "HEAD",
+  "prompts": [
+    {
+      "sequence": 1,
+      "timestamp": "2026-02-15T12:08:56.284464+00:00",
+      "prompt_text": "I want to allow the user to name there agents and to ahve that name show up in the log block for model tokens, etc. ",
+      "git_sha": null,
+      "git_sha_full": null,
+      "files_changed": [],
+      "files_staged": []
+    }
+  ]
+}

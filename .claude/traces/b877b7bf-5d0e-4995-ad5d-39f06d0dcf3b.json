@@ -1,0 +1,17 @@
+{
+  "trace_id": "b877b7bf-5d0e-4995-ad5d-39f06d0dcf3b",
+  "project_dir": "/Users/hev/workspace/go-claude",
+  "started_at": "2026-02-15T11:35:38.772197+00:00",
+  "git_branch": "HEAD",
+  "prompts": [
+    {
+      "sequence": 1,
+      "timestamp": "2026-02-15T11:35:38.772386+00:00",
+      "prompt_text": "I am testing this in ../threadminer and I am not seeing logs? Do I have to optinto this new logging?",
+      "git_sha": null,
+      "git_sha_full": null,
+      "files_changed": [],
+      "files_staged": []
+    }
+  ]
+}
