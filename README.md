@@ -1,5 +1,9 @@
 # go-rack
 
+<p align="center">
+  <img src="go-rack.png" alt="go-rack" width="400" />
+</p>
+
 A **rack** is the loop of gear slung over a climber's shoulder — cams, nuts, draws, everything needed for the route ahead. `go-rack` carries your coding-agent tools the same way: a lightweight Go library that keeps multiple AI providers organized behind a single, common interface.
 
 Current providers:
