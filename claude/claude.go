@@ -9,19 +9,39 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	rack "go-rack"
 )
+
+// Verify Client implements rack.Agent.
+var _ rack.Agent = (*Client)(nil)
+
+// ErrCLINotFound indicates the claude CLI binary was not found on PATH.
+var ErrCLINotFound = errors.New("claude CLI not found")
+
+// ExitError wraps a non-zero exit from the claude CLI process.
+type ExitError struct {
+	Err    error
+	Stderr string
+}
+
+func (e *ExitError) Error() string {
+	if e.Stderr != "" {
+		return fmt.Sprintf("claude exited with error: %v, stderr: %s", e.Err, e.Stderr)
+	}
+	return fmt.Sprintf("claude exited with error: %v", e.Err)
+}
+
+func (e *ExitError) Unwrap() error {
+	return e.Err
+}
 
 // Client wraps the Claude CLI for headless mode invocations.
 type Client struct {
-	executable     string
-	defaultModel   string
-	eventHandler   EventHandler
-	observability  ObservabilityProvider
-}
-
-// Result holds the response from a Claude CLI invocation.
-type Result struct {
-	Text string
+	executable    string
+	defaultModel  string
+	eventHandler  rack.EventHandler
+	observability rack.ObservabilityProvider
 }
 
 // NewClient creates a new Claude CLI client.
@@ -36,16 +56,13 @@ func NewClient(opts ...ClientOption) *Client {
 }
 
 // Run executes the Claude CLI with the given prompt and returns the result.
-func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Result, error) {
-	var cfg runConfig
-	for _, opt := range opts {
-		opt(&cfg)
-	}
+func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption) (rack.Result, error) {
+	cfg := rack.NewRunConfig(opts...)
 
 	// Determine model (per-run overrides client default)
 	model := c.defaultModel
-	if cfg.model != "" {
-		model = cfg.model
+	if cfg.Model != "" {
+		model = cfg.Model
 	}
 
 	// Build args
@@ -55,53 +72,53 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 		"--verbose",
 	}
 
-	for _, tool := range cfg.allowedTools {
+	for _, tool := range cfg.AllowedTools {
 		args = append(args, "--allowedTools", tool)
 	}
 
-	for _, tool := range cfg.disallowedTools {
+	for _, tool := range cfg.DisallowedTools {
 		args = append(args, "--disallowedTools", tool)
 	}
 
-	if cfg.maxTurns > 0 {
-		args = append(args, "--max-turns", fmt.Sprintf("%d", cfg.maxTurns))
+	if cfg.MaxTurns > 0 {
+		args = append(args, "--max-turns", fmt.Sprintf("%d", cfg.MaxTurns))
 	}
 
 	if model != "" {
 		args = append(args, "--model", model)
 	}
 
-	if cfg.systemPrompt != "" {
-		args = append(args, "--system-prompt", cfg.systemPrompt)
+	if cfg.SystemPrompt != "" {
+		args = append(args, "--system-prompt", cfg.SystemPrompt)
 	}
 
 	cmd := exec.CommandContext(ctx, c.executable, args...)
 
-	if cfg.maxOutputTokens > 0 {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("CLAUDE_CODE_MAX_OUTPUT_TOKENS=%d", cfg.maxOutputTokens))
+	if cfg.MaxOutputTokens > 0 {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("CLAUDE_CODE_MAX_OUTPUT_TOKENS=%d", cfg.MaxOutputTokens))
 	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return Result{}, fmt.Errorf("creating stdout pipe: %w", err)
+		return rack.Result{}, fmt.Errorf("creating stdout pipe: %w", err)
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return Result{}, fmt.Errorf("creating stderr pipe: %w", err)
+		return rack.Result{}, fmt.Errorf("creating stderr pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return Result{}, ErrCLINotFound
+			return rack.Result{}, ErrCLINotFound
 		}
-		return Result{}, &ExitError{Err: err}
+		return rack.Result{}, &ExitError{Err: err}
 	}
 
 	// Determine event handler (per-run overrides client default)
 	handler := c.eventHandler
-	if cfg.eventHandler != nil {
-		handler = cfg.eventHandler
+	if cfg.EventHandler != nil {
+		handler = cfg.EventHandler
 	}
 
 	// Parse streaming output
@@ -113,7 +130,7 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
-		var event streamEvent
+		var event rack.StreamEvent
 		if err := json.Unmarshal(line, &event); err != nil {
 			continue
 		}
@@ -126,14 +143,14 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 				sessionID = event.SessionID
 			}
 			if handler != nil {
-				handler(Event{
-					Type:      EventSystem,
+				handler(rack.Event{
+					Type:      rack.EventSystem,
 					SessionID: event.SessionID,
 					Subtype:   event.Subtype,
 					RawJSON:   rawLine,
 				})
 				if event.Subtype == "init" {
-					handler(Event{Type: EventAssistantStart})
+					handler(rack.Event{Type: rack.EventAssistantStart})
 				}
 			}
 		case "assistant":
@@ -142,19 +159,19 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 					switch block.Type {
 					case "text":
 						if handler != nil {
-							handler(Event{
-								Type:    EventAssistant,
+							handler(rack.Event{
+								Type:    rack.EventAssistant,
 								Text:    block.Text,
 								RawJSON: rawLine,
 							})
 						}
-						if cfg.outputStream != nil {
-							cfg.outputStream.Write([]byte(block.Text))
+						if cfg.OutputStream != nil {
+							cfg.OutputStream.Write([]byte(block.Text))
 						}
 					case "tool_use":
 						if handler != nil {
-							handler(Event{
-								Type:      EventToolUse,
+							handler(rack.Event{
+								Type:      rack.EventToolUse,
 								ToolName:  block.Name,
 								ToolID:    block.ID,
 								ToolInput: block.Input,
@@ -171,8 +188,8 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 					if block.Type == "tool_result" {
 						hadToolResults = true
 						if handler != nil {
-							handler(Event{
-								Type:    EventToolResult,
+							handler(rack.Event{
+								Type:    rack.EventToolResult,
 								Text:    block.Content,
 								ToolID:  block.ToolUseID,
 								RawJSON: rawLine,
@@ -181,18 +198,18 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 					}
 				}
 				if hadToolResults && handler != nil {
-					handler(Event{Type: EventAssistantStart})
+					handler(rack.Event{Type: rack.EventAssistantStart})
 				}
 			}
 		case "result":
 			resultText = event.Result
-			evType := EventResult
+			evType := rack.EventResult
 			isError := event.IsError || event.Subtype == "error"
 			if isError {
-				evType = EventResultError
+				evType = rack.EventResultError
 			}
 			if handler != nil {
-				handler(Event{
+				handler(rack.Event{
 					Type:     evType,
 					Text:     event.Result,
 					Subtype:  event.Subtype,
@@ -204,8 +221,8 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 				})
 			}
 			if c.observability != nil {
-				c.observability.RecordCompletion(CompletionRecord{
-					TraceID:    cfg.traceID,
+				c.observability.RecordCompletion(rack.CompletionRecord{
+					TraceID:    cfg.TraceID,
 					SessionID:  sessionID,
 					Prompt:     prompt,
 					Response:   event.Result,
@@ -225,13 +242,13 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
-			return Result{}, ctx.Err()
+			return rack.Result{}, ctx.Err()
 		}
-		return Result{}, &ExitError{
+		return rack.Result{}, &ExitError{
 			Err:    err,
 			Stderr: stderrBuf.String(),
 		}
 	}
 
-	return Result{Text: resultText}, nil
+	return rack.Result{Text: resultText}, nil
 }

@@ -1,4 +1,4 @@
-package claude
+package rack
 
 import (
 	"fmt"
@@ -84,8 +84,7 @@ func LogContent(on bool) LoggerOption {
 }
 
 // WithContextWindow sets the context window size in tokens for percentage
-// calculations. Has no effect unless LogTokens is enabled. You can use
-// ContextWindowForModel to look up the size by model name.
+// calculations. Has no effect unless LogTokens is enabled.
 func WithContextWindow(tokens int) LoggerOption {
 	return func(cfg *loggerConfig) { cfg.contextWindow = tokens }
 }
@@ -96,12 +95,19 @@ func WithAgentName(name string) LoggerOption {
 }
 
 // WithModelName sets the model name displayed in the event prefix tag.
-// Also sets pricing and context window for the model automatically.
+// This only sets the display name. Use WithPricing and WithContextWindow
+// to configure pricing and context window data.
 func WithModelName(name string) LoggerOption {
 	return func(cfg *loggerConfig) {
 		cfg.modelName = name
-		cfg.pricing = PricingForModel(name)
-		cfg.contextWindow = ContextWindowForModel(name)
+	}
+}
+
+// WithPricing sets the model pricing used for cost calculations in token
+// tracking. Has no effect unless LogTokens is enabled.
+func WithPricing(pricing ModelPricing) LoggerOption {
+	return func(cfg *loggerConfig) {
+		cfg.pricing = pricing
 	}
 }
 
@@ -121,7 +127,6 @@ func NewLogger(w io.Writer, opts ...LoggerOption) EventHandler {
 		result:        true,
 		content:       true,
 		contextWindow: 200_000,
-		pricing:       PricingForModel(""),
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -162,23 +167,6 @@ func NewLogger(w io.Writer, opts ...LoggerOption) EventHandler {
 
 		switch e.Type {
 		case EventSystem:
-			// System/hook logging is currently disabled — the client doesn't
-			// expose hook functionality yet so these events are just noise.
-			// Uncomment the block below when hook support is added.
-			//
-			// if !cfg.system {
-			// 	return
-			// }
-			// tag := "[system"
-			// if e.Subtype != "" {
-			// 	tag += ":" + e.Subtype
-			// }
-			// tag += "]"
-			// var body string
-			// if cfg.content && e.SessionID != "" {
-			// 	body = " session=" + e.SessionID
-			// }
-			// w.Write([]byte(fmt.Sprintf("%s%s%s%s\n", colorGray, tag, colorReset, body)))
 			return
 
 		case EventAssistantStart:

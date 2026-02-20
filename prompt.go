@@ -1,4 +1,4 @@
-package claude
+package rack
 
 import (
 	"bytes"

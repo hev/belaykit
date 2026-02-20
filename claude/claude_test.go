@@ -2,6 +2,8 @@ package claude
 
 import (
 	"testing"
+
+	rack "go-rack"
 )
 
 func TestNewClientDefaults(t *testing.T) {
@@ -19,7 +21,7 @@ func TestNewClientDefaults(t *testing.T) {
 
 func TestNewClientWithOptions(t *testing.T) {
 	var handlerCalled bool
-	handler := func(Event) { handlerCalled = true }
+	handler := func(rack.Event) { handlerCalled = true }
 
 	c := NewClient(
 		WithExecutable("/usr/local/bin/claude"),
@@ -38,36 +40,36 @@ func TestNewClientWithOptions(t *testing.T) {
 	}
 
 	// Verify the handler is the one we set
-	c.eventHandler(Event{})
+	c.eventHandler(rack.Event{})
 	if !handlerCalled {
 		t.Error("event handler was not called")
 	}
 }
 
 func TestRunOptions(t *testing.T) {
-	var cfg runConfig
+	var cfg rack.RunConfig
 
-	WithModel("sonnet")(&cfg)
-	if cfg.model != "sonnet" {
-		t.Errorf("model = %q, want %q", cfg.model, "sonnet")
+	rack.WithModel("sonnet")(&cfg)
+	if cfg.Model != "sonnet" {
+		t.Errorf("model = %q, want %q", cfg.Model, "sonnet")
 	}
 
-	WithMaxTurns(10)(&cfg)
-	if cfg.maxTurns != 10 {
-		t.Errorf("maxTurns = %d, want %d", cfg.maxTurns, 10)
+	rack.WithMaxTurns(10)(&cfg)
+	if cfg.MaxTurns != 10 {
+		t.Errorf("maxTurns = %d, want %d", cfg.MaxTurns, 10)
 	}
 
-	WithAllowedTools("Bash(*)", "Write(*)")(&cfg)
-	if len(cfg.allowedTools) != 2 {
-		t.Errorf("allowedTools length = %d, want 2", len(cfg.allowedTools))
+	rack.WithAllowedTools("Bash(*)", "Write(*)")(&cfg)
+	if len(cfg.AllowedTools) != 2 {
+		t.Errorf("allowedTools length = %d, want 2", len(cfg.AllowedTools))
 	}
-	if cfg.allowedTools[0] != "Bash(*)" {
-		t.Errorf("allowedTools[0] = %q, want %q", cfg.allowedTools[0], "Bash(*)")
+	if cfg.AllowedTools[0] != "Bash(*)" {
+		t.Errorf("allowedTools[0] = %q, want %q", cfg.AllowedTools[0], "Bash(*)")
 	}
 
-	WithSystemPrompt("be helpful")(&cfg)
-	if cfg.systemPrompt != "be helpful" {
-		t.Errorf("systemPrompt = %q, want %q", cfg.systemPrompt, "be helpful")
+	rack.WithSystemPrompt("be helpful")(&cfg)
+	if cfg.SystemPrompt != "be helpful" {
+		t.Errorf("systemPrompt = %q, want %q", cfg.SystemPrompt, "be helpful")
 	}
 }
 

@@ -1,4 +1,4 @@
-package claude
+package rack
 
 import "encoding/json"
 
@@ -23,7 +23,7 @@ const (
 	EventResultError EventType = "result_error"
 )
 
-// Event represents a parsed streaming event from the Claude CLI.
+// Event represents a parsed streaming event from an agent.
 type Event struct {
 	Type    EventType
 	Text    string
@@ -48,12 +48,13 @@ type Event struct {
 // EventHandler processes streaming events from a Run invocation.
 type EventHandler func(Event)
 
-// streamEvent is the raw JSON structure from Claude's stream-json output.
-type streamEvent struct {
+// StreamEvent is the raw JSON structure from Claude's stream-json output.
+// Exported for use by agent implementations.
+type StreamEvent struct {
 	Type       string         `json:"type"`
 	Subtype    string         `json:"subtype,omitempty"`
 	SessionID  string         `json:"session_id,omitempty"`
-	Message    *streamMessage `json:"message,omitempty"`
+	Message    *StreamMessage `json:"message,omitempty"`
 	Result     string         `json:"result,omitempty"`
 	CostUSD    float64        `json:"cost_usd,omitempty"`
 	DurationMS int64          `json:"duration_ms,omitempty"`
@@ -61,11 +62,13 @@ type streamEvent struct {
 	IsError    bool           `json:"is_error,omitempty"`
 }
 
-type streamMessage struct {
-	Content []contentBlock `json:"content"`
+// StreamMessage holds the message content from a streaming event.
+type StreamMessage struct {
+	Content []ContentBlock `json:"content"`
 }
 
-type contentBlock struct {
+// ContentBlock represents a single content block in a streaming message.
+type ContentBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text,omitempty"`
 	ID        string          `json:"id,omitempty"`

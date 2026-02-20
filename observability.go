@@ -1,7 +1,7 @@
-package claude
+package rack
 
 // ObservabilityProvider is the interface that observability partners implement
-// to receive trace and completion data from Claude CLI invocations.
+// to receive trace and completion data from agent invocations.
 //
 // Implementations should be safe for concurrent use. Errors should be handled
 // internally (logged or ignored) — observability failures must not affect the
@@ -32,10 +32,10 @@ type TraceConfig struct {
 }
 
 // CompletionRecord holds data about a single LLM completion.
-// Fields are populated automatically from the Claude CLI result event.
+// Fields are populated automatically from the agent result event.
 type CompletionRecord struct {
 	TraceID    string  // Trace this completion belongs to (from WithTraceID)
-	SessionID  string  // Claude CLI session ID (from the system init event)
+	SessionID  string  // Agent session ID (from the system init event)
 	Prompt     string  // The input prompt
 	Response   string  // The result text
 	Model      string  // The model used (resolved from aliases)

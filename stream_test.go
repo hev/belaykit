@@ -1,4 +1,4 @@
-package claude
+package rack
 
 import (
 	"encoding/json"
@@ -40,7 +40,7 @@ func TestStreamEventParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var event streamEvent
+			var event StreamEvent
 			if err := json.Unmarshal([]byte(tt.input), &event); err != nil {
 				t.Fatalf("unmarshal failed: %v", err)
 			}
@@ -93,7 +93,7 @@ func TestEventTypes(t *testing.T) {
 
 func TestSystemEventParsing(t *testing.T) {
 	input := `{"type":"system","subtype":"init","session_id":"abc-123"}`
-	var event streamEvent
+	var event StreamEvent
 	if err := json.Unmarshal([]byte(input), &event); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestSystemEventParsing(t *testing.T) {
 
 func TestToolUseContentBlockParsing(t *testing.T) {
 	input := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tool_01","name":"Bash","input":{"command":"ls"}}]}}`
-	var event streamEvent
+	var event StreamEvent
 	if err := json.Unmarshal([]byte(input), &event); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestToolUseContentBlockParsing(t *testing.T) {
 
 func TestToolResultContentBlockParsing(t *testing.T) {
 	input := `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tool_01","content":"file1.go\nfile2.go"}]}}`
-	var event streamEvent
+	var event StreamEvent
 	if err := json.Unmarshal([]byte(input), &event); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestToolResultContentBlockParsing(t *testing.T) {
 
 func TestResultEventWithMetadata(t *testing.T) {
 	input := `{"type":"result","subtype":"success","result":"done","cost_usd":0.0123,"duration_ms":4500,"num_turns":3}`
-	var event streamEvent
+	var event StreamEvent
 	if err := json.Unmarshal([]byte(input), &event); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestResultEventWithMetadata(t *testing.T) {
 
 func TestResultErrorEventParsing(t *testing.T) {
 	input := `{"type":"result","subtype":"error","result":"something went wrong","is_error":true}`
-	var event streamEvent
+	var event StreamEvent
 	if err := json.Unmarshal([]byte(input), &event); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}

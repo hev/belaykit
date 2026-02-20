@@ -1,4 +1,4 @@
-module go-claude
+module go-rack
 
 go 1.25.5
 

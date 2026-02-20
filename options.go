@@ -1,88 +1,65 @@
-package claude
+package rack
 
 import "io"
 
-// ClientOption configures a Client.
-type ClientOption func(*Client)
-
-// WithExecutable sets the path to the claude CLI binary.
-func WithExecutable(path string) ClientOption {
-	return func(c *Client) {
-		c.executable = path
-	}
-}
-
-// WithDefaultModel sets the default model for all runs.
-func WithDefaultModel(model string) ClientOption {
-	return func(c *Client) {
-		c.defaultModel = model
-	}
-}
-
-// WithDefaultEventHandler sets the default event handler for all runs.
-func WithDefaultEventHandler(h EventHandler) ClientOption {
-	return func(c *Client) {
-		c.eventHandler = h
-	}
-}
-
-// WithObservability sets the observability provider for tracing and completion
-// recording. When set, Run automatically calls RecordCompletion on the provider
-// with data from the result event. Use WithTraceID to associate runs with traces.
-func WithObservability(provider ObservabilityProvider) ClientOption {
-	return func(c *Client) {
-		c.observability = provider
-	}
-}
-
-// runConfig holds per-run configuration.
-type runConfig struct {
-	model            string
-	maxTurns         int
-	maxOutputTokens  int
-	allowedTools     []string
-	disallowedTools  []string
-	outputStream     io.Writer
-	eventHandler     EventHandler
-	systemPrompt     string
-	traceID          string
+// RunConfig holds per-run configuration. Exported so sub-packages (agent
+// implementations) can read the resolved options.
+type RunConfig struct {
+	Model           string
+	MaxTurns        int
+	MaxOutputTokens int
+	AllowedTools    []string
+	DisallowedTools []string
+	OutputStream    io.Writer
+	EventHandler    EventHandler
+	SystemPrompt    string
+	TraceID         string
 }
 
 // RunOption configures a single Run invocation.
-type RunOption func(*runConfig)
+type RunOption func(*RunConfig)
+
+// NewRunConfig resolves a set of RunOptions into a RunConfig.
+func NewRunConfig(opts ...RunOption) RunConfig {
+	var cfg RunConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
 
 // WithModel sets the model for this run, overriding the client default.
 func WithModel(model string) RunOption {
-	return func(cfg *runConfig) {
-		cfg.model = model
+	return func(cfg *RunConfig) {
+		cfg.Model = model
 	}
 }
 
 // WithMaxTurns sets the maximum number of agentic turns.
 func WithMaxTurns(n int) RunOption {
-	return func(cfg *runConfig) {
-		cfg.maxTurns = n
+	return func(cfg *RunConfig) {
+		cfg.MaxTurns = n
 	}
 }
 
 // WithMaxOutputTokens sets the maximum number of output tokens for the response.
 func WithMaxOutputTokens(n int) RunOption {
-	return func(cfg *runConfig) {
-		cfg.maxOutputTokens = n
+	return func(cfg *RunConfig) {
+		cfg.MaxOutputTokens = n
 	}
 }
 
 // WithAllowedTools sets the tools the model is allowed to use.
 func WithAllowedTools(tools ...string) RunOption {
-	return func(cfg *runConfig) {
-		cfg.allowedTools = tools
+	return func(cfg *RunConfig) {
+		cfg.AllowedTools = tools
 	}
 }
 
 // WithDisallowedTools sets tools the model is NOT allowed to use.
 func WithDisallowedTools(tools ...string) RunOption {
-	return func(cfg *runConfig) {
-		cfg.disallowedTools = tools
+	return func(cfg *RunConfig) {
+		cfg.DisallowedTools = tools
 	}
 }
 
@@ -90,23 +67,23 @@ func WithDisallowedTools(tools ...string) RunOption {
 // This is a convenience alternative to WithEventHandler for callers that
 // just want to see the text stream.
 func WithOutputStream(w io.Writer) RunOption {
-	return func(cfg *runConfig) {
-		cfg.outputStream = w
+	return func(cfg *RunConfig) {
+		cfg.OutputStream = w
 	}
 }
 
 // WithEventHandler sets the event handler for this run, overriding the
 // client-level default set via WithDefaultEventHandler.
 func WithEventHandler(h EventHandler) RunOption {
-	return func(cfg *runConfig) {
-		cfg.eventHandler = h
+	return func(cfg *RunConfig) {
+		cfg.EventHandler = h
 	}
 }
 
 // WithSystemPrompt sets the system prompt for this run.
 func WithSystemPrompt(s string) RunOption {
-	return func(cfg *runConfig) {
-		cfg.systemPrompt = s
+	return func(cfg *RunConfig) {
+		cfg.SystemPrompt = s
 	}
 }
 
@@ -115,7 +92,7 @@ func WithSystemPrompt(s string) RunOption {
 // ObservabilityProvider. Use ObservabilityProvider.StartTrace to
 // create a trace and obtain the ID.
 func WithTraceID(id string) RunOption {
-	return func(cfg *runConfig) {
-		cfg.traceID = id
+	return func(cfg *RunConfig) {
+		cfg.TraceID = id
 	}
 }

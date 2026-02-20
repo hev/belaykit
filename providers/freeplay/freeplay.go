@@ -10,20 +10,20 @@
 //	fp.StartSession(map[string]any{"name": "my-pipeline"})
 //
 //	// Optional: wrap in a trace
-//	tid := provider.StartTrace(claude.TraceConfig{Name: "extract"}, inputs)
-//	result, _ := client.Run(ctx, prompt, claude.WithTraceID(tid))
+//	tid := provider.StartTrace(rack.TraceConfig{Name: "extract"}, inputs)
+//	result, _ := client.Run(ctx, prompt, rack.WithTraceID(tid))
 //	provider.EndTrace(tid, map[string]any{"fields": 42})
 package freeplay
 
 import (
 	"time"
 
-	claude "go-claude"
+	rack "go-rack"
 
 	fp "github.com/hev/freeplay-go"
 )
 
-// Provider implements claude.ObservabilityProvider using the Freeplay API.
+// Provider implements rack.ObservabilityProvider using the Freeplay API.
 type Provider struct {
 	client *fp.Client
 }
@@ -41,7 +41,7 @@ func (p *Provider) StartSession(metadata map[string]any) string {
 }
 
 // StartTrace begins a new Freeplay trace.
-func (p *Provider) StartTrace(config claude.TraceConfig, inputs map[string]any) string {
+func (p *Provider) StartTrace(config rack.TraceConfig, inputs map[string]any) string {
 	return p.client.StartTrace(fp.TraceConfig{
 		AgentName:      config.Name,
 		DisplayName:    config.DisplayName,
@@ -55,7 +55,7 @@ func (p *Provider) EndTrace(traceID string, outputs map[string]any) {
 }
 
 // RecordCompletion records an LLM completion in Freeplay.
-func (p *Provider) RecordCompletion(record claude.CompletionRecord) {
+func (p *Provider) RecordCompletion(record rack.CompletionRecord) {
 	now := time.Now()
 	start := now.Add(-time.Duration(record.DurationMS) * time.Millisecond)
 

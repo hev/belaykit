@@ -1,4 +1,4 @@
-package claude
+package rack
 
 import (
 	"bytes"
@@ -124,10 +124,6 @@ func TestLoggerColorCodes(t *testing.T) {
 	}
 }
 
-// TestLoggerSystemFormat is disabled — system events are suppressed until hook support lands.
-// When re-enabled, the format should be [system:subtype] with session ID in the body.
-// Expected format: [system:init] session=abc
-
 func TestLoggerSystemStillResetsTokens(t *testing.T) {
 	// Even though system events are suppressed for display, they must still
 	// reset token counters on init for correct accounting.
@@ -222,9 +218,6 @@ func TestLoggerConcurrentWrites(t *testing.T) {
 	wg.Wait()
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	// Each assistant event produces a header (since inTurn starts false and
-	// concurrent goroutines race) plus the text line. We just verify we get
-	// at least 100 lines and no panics.
 	if len(lines) < 100 {
 		t.Errorf("expected at least 100 lines, got %d", len(lines))
 	}
@@ -263,10 +256,8 @@ func TestLoggerToolUseIndentedUnderAssistant(t *testing.T) {
 	logger(Event{Type: EventToolResult, Text: "file1.go"})
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	// Lines: header, "  Let me check.", "  [tool_use]...", "  [tool_result]..."
 	for i, line := range lines {
 		if i == 0 {
-			// Header should NOT be indented
 			if strings.HasPrefix(line, "  ") {
 				t.Errorf("header line should not be indented: %q", line)
 			}
@@ -282,7 +273,6 @@ func TestLoggerToolUseNotIndentedWithoutAssistant(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger(&buf, LogAssistant(false))
 
-	// Without assistant enabled, no header is emitted, tools are not indented
 	logger(Event{Type: EventToolUse, ToolName: "Bash"})
 	output := buf.String()
 	if strings.HasPrefix(output, "  ") {
@@ -330,7 +320,6 @@ func TestLoggerAssistantStartShowsThermobar(t *testing.T) {
 	logger(Event{Type: EventAssistantStart})
 	output := buf.String()
 
-	// Should contain thermobar characters
 	if !strings.Contains(output, "█") {
 		t.Errorf("expected thermobar filled blocks in output, got %q", output)
 	}
@@ -346,7 +335,6 @@ func TestLoggerAutoHeaderOnAssistantText(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger(&buf)
 
-	// No explicit EventAssistantStart, header should auto-emit
 	logger(Event{Type: EventAssistant, Text: "hello"})
 	output := buf.String()
 	if !strings.Contains(output, "[assistant]") {
@@ -376,12 +364,10 @@ func TestLoggerNewTurnAfterResult(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger(&buf)
 
-	// First turn
 	logger(Event{Type: EventAssistantStart})
 	logger(Event{Type: EventAssistant, Text: "first turn"})
 	logger(Event{Type: EventResult, NumTurns: 1, Duration: 100})
 
-	// Second turn should get a new header
 	logger(Event{Type: EventAssistant, Text: "second turn"})
 
 	output := buf.String()
@@ -405,7 +391,6 @@ func TestLoggerTokenTracking(t *testing.T) {
 	logger(Event{Type: EventAssistantStart})
 	output := buf.String()
 
-	// Should contain input/output token stats
 	if !strings.Contains(output, "in +") {
 		t.Errorf("expected 'in +' in output, got %q", output)
 	}
@@ -423,6 +408,8 @@ func TestLoggerTokenTrackingInputOutput(t *testing.T) {
 	logger := NewLogger(&buf,
 		LogTokens(true),
 		WithModelName("haiku"),
+		WithPricing(ModelPricing{InputPerMTok: 1, OutputPerMTok: 5}),
+		WithContextWindow(200_000),
 		func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 	)
 
@@ -433,8 +420,6 @@ func TestLoggerTokenTrackingInputOutput(t *testing.T) {
 
 	output := buf.String()
 
-	// The assistant header (auto-emitted before text) should show accumulated stats
-	// ~10 in + ~5 out
 	if !strings.Contains(output, "~10 in") {
 		t.Errorf("expected ~10 input tokens, got %q", output)
 	}
@@ -452,16 +437,13 @@ func TestLoggerTokenTrackingAccumulates(t *testing.T) {
 		func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 	)
 
-	// "abcd" = 1 output token, "efghijkl" = 2 output tokens => cumulative 3
 	logger(Event{Type: EventAssistantStart})
 	logger(Event{Type: EventAssistant, Text: "abcd"})
 	logger(Event{Type: EventAssistant, Text: "efghijkl"})
-	// Result line shows accumulated stats
 	logger(Event{Type: EventResult, NumTurns: 1, Duration: 100})
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	lastLine := lines[len(lines)-1]
-	// Result line should show accumulated ~3 output tokens
 	if !strings.Contains(lastLine, "~3 out") {
 		t.Errorf("expected accumulated ~3 output tokens in result, got %q", lastLine)
 	}
@@ -476,24 +458,19 @@ func TestLoggerTokenTrackingResetsOnNewSession(t *testing.T) {
 		func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 	)
 
-	// First session: accumulate some tokens
 	logger(Event{Type: EventSystem, Subtype: "init", SessionID: "session-1"})
 	logger(Event{Type: EventAssistantStart})
-	logger(Event{Type: EventAssistant, Text: strings.Repeat("a", 40)}) // 10 output tokens
-	logger(Event{Type: EventAssistant, Text: strings.Repeat("b", 40)}) // 10 more = 20 output total
+	logger(Event{Type: EventAssistant, Text: strings.Repeat("a", 40)})
+	logger(Event{Type: EventAssistant, Text: strings.Repeat("b", 40)})
 
-	// New session should reset
 	logger(Event{Type: EventSystem, Subtype: "init", SessionID: "session-2"})
-	// After reset: init adds ~4 input tokens ("init"=1 + "session-2"=3)
 	logger(Event{Type: EventAssistantStart})
-	logger(Event{Type: EventAssistant, Text: "abcd"}) // 1 output token
-	// End with result to see final stats
+	logger(Event{Type: EventAssistant, Text: "abcd"})
 	logger(Event{Type: EventResult, NumTurns: 1, Duration: 100})
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	lastLine := lines[len(lines)-1]
 
-	// After reset: result should show ~1 out (not 20+)
 	if !strings.Contains(lastLine, "~1 out") {
 		t.Errorf("expected ~1 output token after session reset, got %q", lastLine)
 	}
@@ -504,7 +481,9 @@ func TestLoggerTokenTrackingCostCalculation(t *testing.T) {
 	frozen := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	logger := NewLogger(&buf,
 		LogTokens(true),
-		WithModelName("haiku"), // $1/MTok input, $5/MTok output
+		WithModelName("haiku"),
+		WithPricing(ModelPricing{InputPerMTok: 1, OutputPerMTok: 5}),
+		WithContextWindow(200_000),
 		func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 	)
 
@@ -523,14 +502,15 @@ func TestLoggerTokenTrackingCostCalculation(t *testing.T) {
 func TestLoggerTokenTrackingCostByModel(t *testing.T) {
 	tests := []struct {
 		model    string
+		pricing  ModelPricing
 		wantCost string // 1000 input + 1000 output tokens
 	}{
 		// opus: 1000 * $5/M + 1000 * $25/M = $0.005 + $0.025 = $0.0300
-		{"opus", "$0.0300"},
+		{"opus", ModelPricing{InputPerMTok: 5, OutputPerMTok: 25}, "$0.0300"},
 		// sonnet: 1000 * $3/M + 1000 * $15/M = $0.003 + $0.015 = $0.0180
-		{"sonnet", "$0.0180"},
+		{"sonnet", ModelPricing{InputPerMTok: 3, OutputPerMTok: 15}, "$0.0180"},
 		// haiku: 1000 * $1/M + 1000 * $5/M = $0.001 + $0.005 = $0.0060
-		{"haiku", "$0.0060"},
+		{"haiku", ModelPricing{InputPerMTok: 1, OutputPerMTok: 5}, "$0.0060"},
 	}
 
 	for _, tt := range tests {
@@ -540,6 +520,8 @@ func TestLoggerTokenTrackingCostByModel(t *testing.T) {
 			logger := NewLogger(&buf,
 				LogTokens(true),
 				WithModelName(tt.model),
+				WithPricing(tt.pricing),
+				WithContextWindow(200_000),
 				func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 			)
 
@@ -595,12 +577,9 @@ func TestLoggerTokenTrackingToolUseIsOutput(t *testing.T) {
 		func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 	)
 
-	// Start a turn, then tool use
 	logger(Event{Type: EventAssistantStart})
 	buf.Reset()
-	// ToolName "Bash" = 1 token, ToolInput `{"command":"ls"}` = 4 tokens => 5 output total
 	logger(Event{Type: EventToolUse, ToolName: "Bash", ToolInput: json.RawMessage(`{"command":"ls"}`)})
-	// End turn and check result stats
 	logger(Event{Type: EventResult, NumTurns: 1, Duration: 100})
 	output := buf.String()
 	if !strings.Contains(output, "~5 out") {
@@ -620,7 +599,6 @@ func TestLoggerTokenTrackingPercentage(t *testing.T) {
 		func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 	)
 
-	// 40 chars = 10 output tokens out of 100 = 10.0%
 	logger(Event{Type: EventAssistant, Text: strings.Repeat("a", 40)})
 	output := buf.String()
 	if !strings.Contains(output, "10.0%") {
@@ -649,7 +627,6 @@ func TestFormatThermobar(t *testing.T) {
 			t.Errorf("formatThermobar(%d, %d) = %q, want pct %q", tt.total, tt.window, bar, tt.wantPct)
 		}
 		if !strings.Contains(bar, "█") || !strings.Contains(bar, "░") {
-			// At 100% there are no empty blocks, at 0% there are no filled blocks
 			if tt.total > 0 && tt.total < tt.window {
 				t.Errorf("expected both block chars in %q", bar)
 			}
@@ -658,19 +635,16 @@ func TestFormatThermobar(t *testing.T) {
 }
 
 func TestFormatThermobarColorThresholds(t *testing.T) {
-	// < 65% = green
 	bar := formatThermobar(50, 100)
 	if !strings.Contains(bar, colorGreen) {
 		t.Errorf("expected green for 50%%, got %q", bar)
 	}
 
-	// 65-85% = yellow
 	bar = formatThermobar(70, 100)
 	if !strings.Contains(bar, colorYellow) {
 		t.Errorf("expected yellow for 70%%, got %q", bar)
 	}
 
-	// > 85% = bold red
 	bar = formatThermobar(90, 100)
 	if !strings.Contains(bar, colorBoldRed) {
 		t.Errorf("expected bold red for 90%%, got %q", bar)
@@ -725,12 +699,9 @@ func TestLoggerModelNotInStats(t *testing.T) {
 	logger(Event{Type: EventAssistantStart})
 	output := buf.String()
 
-	// Model/agent should be in the prefix tag, NOT in the stats portion
 	if !strings.Contains(output, "[assistant:opus:researcher]") {
 		t.Errorf("expected model/agent in prefix, got %q", output)
 	}
-	// The stats portion (after thermobar) should not contain "opus |" or "researcher |"
-	// Find the stats portion (after the percentage)
 	pctIdx := strings.Index(output, "%")
 	if pctIdx > 0 {
 		stats := output[pctIdx:]
@@ -740,21 +711,31 @@ func TestLoggerModelNotInStats(t *testing.T) {
 	}
 }
 
-func TestWithModelNameSetsPricingAndWindow(t *testing.T) {
+func TestWithModelNameSetsDisplayOnly(t *testing.T) {
 	var cfg loggerConfig
 	WithModelName("haiku")(&cfg)
 
 	if cfg.modelName != "haiku" {
 		t.Errorf("modelName = %q, want %q", cfg.modelName, "haiku")
 	}
+	// WithModelName should NOT auto-set pricing or context window
+	if cfg.pricing.InputPerMTok != 0 {
+		t.Errorf("pricing.InputPerMTok = %f, want 0 (not auto-set)", cfg.pricing.InputPerMTok)
+	}
+	if cfg.contextWindow != 0 {
+		t.Errorf("contextWindow = %d, want 0 (not auto-set)", cfg.contextWindow)
+	}
+}
+
+func TestWithPricingSetsValues(t *testing.T) {
+	var cfg loggerConfig
+	WithPricing(ModelPricing{InputPerMTok: 1, OutputPerMTok: 5})(&cfg)
+
 	if cfg.pricing.InputPerMTok != 1 {
 		t.Errorf("pricing.InputPerMTok = %f, want 1", cfg.pricing.InputPerMTok)
 	}
 	if cfg.pricing.OutputPerMTok != 5 {
 		t.Errorf("pricing.OutputPerMTok = %f, want 5", cfg.pricing.OutputPerMTok)
-	}
-	if cfg.contextWindow != 200_000 {
-		t.Errorf("contextWindow = %d, want 200000", cfg.contextWindow)
 	}
 }
 
@@ -813,6 +794,8 @@ func TestLoggerLogContentFalse(t *testing.T) {
 		LogContent(false),
 		WithAgentName("extract"),
 		WithModelName("haiku"),
+		WithPricing(ModelPricing{InputPerMTok: 1, OutputPerMTok: 5}),
+		WithContextWindow(200_000),
 		func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 	)
 
@@ -820,15 +803,12 @@ func TestLoggerLogContentFalse(t *testing.T) {
 	logger(Event{Type: EventAssistant, Text: "this should not appear in output"})
 	output := buf.String()
 
-	// Prefix with model/agent should be present
 	if !strings.Contains(output, "[assistant:haiku:extract]") {
 		t.Errorf("expected [assistant:haiku:extract] prefix, got %q", output)
 	}
-	// Thermobar should be present
 	if !strings.Contains(output, "░") {
 		t.Errorf("expected thermobar in output, got %q", output)
 	}
-	// Body content should be suppressed
 	if strings.Contains(output, "this should not appear") {
 		t.Errorf("body text should be suppressed with LogContent(false), got %q", output)
 	}
@@ -844,10 +824,8 @@ func TestLoggerLogContentFalseStillTracksTokens(t *testing.T) {
 		func(cfg *loggerConfig) { cfg.clock = func() time.Time { return frozen } },
 	)
 
-	// Start turn, then 40 chars = 10 output tokens
 	logger(Event{Type: EventAssistantStart})
 	logger(Event{Type: EventAssistant, Text: strings.Repeat("a", 40)})
-	// End turn so stats show on result line
 	logger(Event{Type: EventResult, NumTurns: 1, Duration: 100})
 
 	output := buf.String()
@@ -873,11 +851,9 @@ func TestLoggerLogContentFalseShowsToolName(t *testing.T) {
 
 	logger(Event{Type: EventToolUse, ToolName: "Bash", ToolInput: json.RawMessage(`{"command":"ls"}`)})
 	output := buf.String()
-	// Tool name should always show
 	if !strings.Contains(output, "Bash") {
 		t.Errorf("tool name should show even with content disabled, got %q", output)
 	}
-	// But the input should not
 	if strings.Contains(output, `{"command":"ls"}`) {
 		t.Errorf("tool input should be hidden with content disabled, got %q", output)
 	}
