@@ -37,14 +37,15 @@ func WithObservability(provider ObservabilityProvider) ClientOption {
 
 // runConfig holds per-run configuration.
 type runConfig struct {
-	model           string
-	maxTurns        int
-	maxOutputTokens int
-	allowedTools    []string
-	outputStream    io.Writer
-	eventHandler    EventHandler
-	systemPrompt    string
-	traceID         string
+	model            string
+	maxTurns         int
+	maxOutputTokens  int
+	allowedTools     []string
+	disallowedTools  []string
+	outputStream     io.Writer
+	eventHandler     EventHandler
+	systemPrompt     string
+	traceID          string
 }
 
 // RunOption configures a single Run invocation.
@@ -75,6 +76,13 @@ func WithMaxOutputTokens(n int) RunOption {
 func WithAllowedTools(tools ...string) RunOption {
 	return func(cfg *runConfig) {
 		cfg.allowedTools = tools
+	}
+}
+
+// WithDisallowedTools sets tools the model is NOT allowed to use.
+func WithDisallowedTools(tools ...string) RunOption {
+	return func(cfg *runConfig) {
+		cfg.disallowedTools = tools
 	}
 }
 

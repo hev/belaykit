@@ -59,6 +59,10 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RunOption) (Res
 		args = append(args, "--allowedTools", tool)
 	}
 
+	for _, tool := range cfg.disallowedTools {
+		args = append(args, "--disallowedTools", tool)
+	}
+
 	if cfg.maxTurns > 0 {
 		args = append(args, "--max-turns", fmt.Sprintf("%d", cfg.maxTurns))
 	}
