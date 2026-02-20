@@ -1,6 +1,6 @@
 # go-rack
 
-`go-rack` is a lightweight Go library for running coding-agent workflows behind a common interface.
+A **rack** is the loop of gear slung over a climber's shoulder — cams, nuts, draws, everything needed for the route ahead. `go-rack` carries your coding-agent tools the same way: a lightweight Go library that keeps multiple AI providers organized behind a single, common interface.
 
 Current providers:
 - Claude CLI (`go-rack/claude`)
