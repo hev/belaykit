@@ -125,6 +125,7 @@ func NewLogger(w io.Writer, opts ...LoggerOption) EventHandler {
 		toolUse:       true,
 		toolResult:    true,
 		result:        true,
+		tokens:        true,
 		content:       true,
 		contextWindow: 200_000,
 	}

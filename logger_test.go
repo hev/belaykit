@@ -557,9 +557,20 @@ func TestLoggerTokenTrackingTiming(t *testing.T) {
 	}
 }
 
-func TestLoggerTokenTrackingDisabledByDefault(t *testing.T) {
+func TestLoggerTokenTrackingEnabledByDefault(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger(&buf)
+
+	logger(Event{Type: EventAssistantStart})
+	output := buf.String()
+	if !strings.Contains(output, "░") {
+		t.Errorf("thermobar should appear by default, got %q", output)
+	}
+}
+
+func TestLoggerTokenTrackingCanBeDisabled(t *testing.T) {
+	var buf bytes.Buffer
+	logger := NewLogger(&buf, LogTokens(false))
 
 	logger(Event{Type: EventAssistantStart})
 	output := buf.String()
