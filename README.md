@@ -139,6 +139,65 @@ Then pass it to `Run`:
 res, err := client.Run(ctx, prompt, rack.WithEventHandler(handler))
 ```
 
+## Slack Notifications
+
+The `go-rack/slack` package provides shared Slack notifications for any agent — zero external dependencies, raw HTTP only. It supports both webhook and bot-token modes, with automatic threading and `@mention` on session end.
+
+### Config
+
+Embed `slack.Config` in your agent's config:
+
+```yaml
+slack:
+  enabled: true
+  bot_token: "xoxb-your-bot-token"
+  channel: "C0123456789"
+  notify_users:
+    - "U0123456789"
+  events:
+    on_start: true
+    on_error: true
+    on_result: true
+    on_tool_use: false
+```
+
+Webhook-only mode (no threading) is also supported — set `webhook_url` instead of `bot_token`/`channel`.
+
+### Explicit Notifier API
+
+Thread-aware, concurrency-safe. All methods no-op when disabled — no nil checks needed.
+
+```go
+import rackslack "go-rack/slack"
+
+notifier := rackslack.NewNotifier(cfg.Slack)
+notifier.StartSession(ctx, "Session started")   // captures thread TS
+notifier.Send(ctx, "Working on todo #1...")      // threads under session
+notifier.EndSession(ctx, "All done!")            // threads + @mentions
+```
+
+### Auto EventHandler
+
+Returns a `rack.EventHandler` that dispatches Slack notifications based on `EventConfig`. Calls are made in goroutines so the handler never blocks the event stream.
+
+```go
+handler := rackslack.NewEventHandler(notifier,
+    rackslack.WithHandlerAgentName("ralph"),
+)
+res, err := client.Run(ctx, prompt, rack.WithEventHandler(handler))
+```
+
+Options: `WithHandlerAgentName`, `WithErrorFormatter`, `WithResultFormatter`, `WithHandlerContext`.
+
+### Composing with Logger
+
+```go
+slackH := rackslack.NewEventHandler(notifier)
+logH := rack.NewLogger(os.Stderr)
+combined := func(e rack.Event) { logH(e); slackH(e) }
+res, err := client.Run(ctx, prompt, rack.WithEventHandler(combined))
+```
+
 ## Observability
 
 Both providers support pluggable observability via:
