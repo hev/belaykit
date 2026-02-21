@@ -21,6 +21,10 @@ const (
 	EventToolResult EventType = "tool_result"
 	// EventResultError is emitted when the result indicates an error.
 	EventResultError EventType = "result_error"
+	// EventPhase is emitted by callers to mark phase boundaries within a run.
+	// go-rack does not generate this automatically; callers emit it to tell
+	// observability providers that a new phase is starting.
+	EventPhase EventType = "phase"
 )
 
 // Event represents a parsed streaming event from an agent.
@@ -43,6 +47,9 @@ type Event struct {
 	Duration int64 // milliseconds
 	NumTurns int
 	IsError  bool
+
+	// Phase fields (only set for EventPhase events)
+	PhaseName string
 }
 
 // EventHandler processes streaming events from a Run invocation.
