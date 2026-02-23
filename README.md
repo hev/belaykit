@@ -6,7 +6,7 @@
 
 **A rope for your agent harness.**
 
-In climbing, a belay provides a climber protection from falling through a rope and a device, collectively referred to as a belay kit. Belaykit allows you to "belay" your agentic coding harness by centralizing common concerns like observability, failover, and interrupt behavior into a centralized Go library.
+In climbing, a belay provides a climber protection from falling through a rope and a [device](https://github.com/hev/belaydevice), collectively referred to as a belay kit. Belaykit allows you to "belay" your agentic coding harness by centralizing common concerns like observability, failover, and interrupt behavior into a centralized Go library.
 
 ## Providers
 
@@ -119,3 +119,5 @@ Both providers support pluggable observability:
 - `codex.WithObservability(...)`
 
 Use `belaykit.WithTraceID(...)` on each run to attach completions to a trace.
+
+Pair with [belaydevice](https://github.com/hev/belaydevice) to visualize agent trace trees — phases, tool calls, token usage, cost, and context window utilization.
