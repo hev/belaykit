@@ -4,9 +4,12 @@
   <img src="belaykit.png" alt="belaykit" width="400" />
 </p>
 
-A **belay** is the system that catches a climber's fall — the rope, the device, the partner holding the line. `belaykit` works the same way for your coding agents: a lightweight Go library that keeps multiple AI providers organized behind a single, common interface, so you're always on belay.
+**A rope for your agent harness.**
 
-Current providers:
+In climbing, a belay provides a climber protection from falling through a rope and a device, collectively referred to as a belay kit. Belaykit allows you to "belay" your agentic coding harness by centralizing common concerns like observability, failover, and interrupt behavior into a centralized Go library.
+
+## Providers
+
 - Claude CLI (`belaykit/claude`)
 - Codex CLI (`belaykit/codex`)
 
@@ -20,7 +23,7 @@ You also need the provider CLIs installed and authenticated:
 - `claude` for Claude provider
 - `codex` for Codex provider
 
-## Core Interface
+## Usage
 
 Both providers implement `belaykit.Agent`:
 
@@ -30,97 +33,49 @@ type Agent interface {
 }
 ```
 
-This lets you swap providers without changing your calling code.
-
-## Claude Quick Start
+### Claude
 
 ```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    "belaykit"
-    "belaykit/claude"
+client := claude.NewClient(
+    claude.WithDefaultModel("sonnet"),
 )
 
-func main() {
-    ctx := context.Background()
-
-    client := claude.NewClient(
-        claude.WithDefaultModel("sonnet"),
-    )
-
-    res, err := client.Run(
-        ctx,
-        "Write a small Go function that reverses a string.",
-        belaykit.WithMaxTurns(3),
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Println(res.Text)
-}
+res, err := client.Run(
+    ctx,
+    "Write a small Go function that reverses a string.",
+    belaykit.WithMaxTurns(3),
+)
 ```
 
-## Codex Quick Start
+### Codex
 
 ```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    "belaykit"
-    "belaykit/codex"
+client := codex.NewClient(
+    codex.WithDefaultModel("gpt-5-codex"),
 )
 
-func main() {
-    ctx := context.Background()
-
-    client := codex.NewClient(
-        codex.WithDefaultModel("gpt-5-codex"),
-    )
-
-    res, err := client.Run(
-        ctx,
-        "Refactor this function for readability and keep behavior identical.",
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Println(res.Text)
-}
+res, err := client.Run(
+    ctx,
+    "Refactor this function for readability and keep behavior identical.",
+)
 ```
 
-## Shared Run Options
+## Run Options
 
-These `belaykit` options work across providers:
+Shared options that work across providers:
 - `belaykit.WithModel(...)`
 - `belaykit.WithSystemPrompt(...)`
 - `belaykit.WithEventHandler(...)`
 - `belaykit.WithOutputStream(...)`
 - `belaykit.WithTraceID(...)`
 
-## Provider Differences
-
-Claude supports additional controls:
+Claude-specific:
 - `belaykit.WithMaxTurns(...)`
 - `belaykit.WithMaxOutputTokens(...)`
 - `belaykit.WithAllowedTools(...)`
 - `belaykit.WithDisallowedTools(...)`
 
-Codex currently returns explicit errors if those four options are set.
-
 ## Streaming Events
-
-Use `belaykit.WithEventHandler` to receive normalized events (`assistant`, `assistant_start`, `tool_use`, `tool_result`, `result`, `result_error`):
 
 ```go
 handler := func(ev belaykit.Event) {
@@ -131,54 +86,24 @@ handler := func(ev belaykit.Event) {
         fmt.Println("run failed:", ev.Text)
     }
 }
-```
 
-Then pass it to `Run`:
-
-```go
 res, err := client.Run(ctx, prompt, belaykit.WithEventHandler(handler))
 ```
 
 ## Slack Notifications
 
-The `belaykit/slack` package provides shared Slack notifications for any agent — zero external dependencies, raw HTTP only. It supports both webhook and bot-token modes, with automatic threading and `@mention` on session end.
-
-### Config
-
-Embed `slack.Config` in your agent's config:
-
-```yaml
-slack:
-  enabled: true
-  bot_token: "xoxb-your-bot-token"
-  channel: "C0123456789"
-  notify_users:
-    - "U0123456789"
-  events:
-    on_start: true
-    on_error: true
-    on_result: true
-    on_tool_use: false
-```
-
-Webhook-only mode (no threading) is also supported — set `webhook_url` instead of `bot_token`/`channel`.
-
-### Explicit Notifier API
-
-Thread-aware, concurrency-safe. All methods no-op when disabled — no nil checks needed.
+The `belaykit/slack` package sends Slack notifications for any agent using raw HTTP (no external dependencies). Supports webhook and bot-token modes with automatic threading.
 
 ```go
 import rackslack "belaykit/slack"
 
 notifier := rackslack.NewNotifier(cfg.Slack)
-notifier.StartSession(ctx, "Session started")   // captures thread TS
-notifier.Send(ctx, "Working on todo #1...")      // threads under session
-notifier.EndSession(ctx, "All done!")            // threads + @mentions
+notifier.StartSession(ctx, "Session started")
+notifier.Send(ctx, "Working on todo #1...")
+notifier.EndSession(ctx, "All done!")
 ```
 
-### Auto EventHandler
-
-Returns a `belaykit.EventHandler` that dispatches Slack notifications based on `EventConfig`. Calls are made in goroutines so the handler never blocks the event stream.
+Or use the auto event handler:
 
 ```go
 handler := rackslack.NewEventHandler(notifier,
@@ -187,20 +112,9 @@ handler := rackslack.NewEventHandler(notifier,
 res, err := client.Run(ctx, prompt, belaykit.WithEventHandler(handler))
 ```
 
-Options: `WithHandlerAgentName`, `WithErrorFormatter`, `WithResultFormatter`, `WithHandlerContext`.
-
-### Composing with Logger
-
-```go
-slackH := rackslack.NewEventHandler(notifier)
-logH := belaykit.NewLogger(os.Stderr)
-combined := func(e belaykit.Event) { logH(e); slackH(e) }
-res, err := client.Run(ctx, prompt, belaykit.WithEventHandler(combined))
-```
-
 ## Observability
 
-Both providers support pluggable observability via:
+Both providers support pluggable observability:
 - `claude.WithObservability(...)`
 - `codex.WithObservability(...)`
 
