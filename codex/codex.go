@@ -13,11 +13,11 @@ import (
 	"strings"
 	"sync"
 
-	rack "go-rack"
+	"belaykit"
 )
 
-// Verify Client implements rack.Agent.
-var _ rack.Agent = (*Client)(nil)
+// Verify Client implements belaykit.Agent.
+var _ belaykit.Agent = (*Client)(nil)
 
 // ErrCLINotFound indicates the codex CLI binary was not found on PATH.
 var ErrCLINotFound = errors.New("codex CLI not found")
@@ -52,8 +52,8 @@ func (e *ExitError) Unwrap() error {
 type Client struct {
 	executable    string
 	defaultModel  string
-	eventHandler  rack.EventHandler
-	observability rack.ObservabilityProvider
+	eventHandler  belaykit.EventHandler
+	observability belaykit.ObservabilityProvider
 }
 
 // NewClient creates a new Codex CLI client.
@@ -68,11 +68,11 @@ func NewClient(opts ...ClientOption) *Client {
 }
 
 // Run executes the Codex CLI with the given prompt and returns the result.
-func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption) (rack.Result, error) {
-	cfg := rack.NewRunConfig(opts...)
+func (c *Client) Run(ctx context.Context, prompt string, opts ...belaykit.RunOption) (belaykit.Result, error) {
+	cfg := belaykit.NewRunConfig(opts...)
 
 	if err := validateRunConfig(cfg); err != nil {
-		return rack.Result{}, err
+		return belaykit.Result{}, err
 	}
 
 	model := c.defaultModel
@@ -80,9 +80,9 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 		model = cfg.Model
 	}
 
-	lastMsgFile, err := os.CreateTemp("", "go-rack-codex-last-message-*.txt")
+	lastMsgFile, err := os.CreateTemp("", "belaykit-codex-last-message-*.txt")
 	if err != nil {
-		return rack.Result{}, fmt.Errorf("creating temp output file: %w", err)
+		return belaykit.Result{}, fmt.Errorf("creating temp output file: %w", err)
 	}
 	lastMsgPath := lastMsgFile.Name()
 	lastMsgFile.Close()
@@ -99,19 +99,19 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return rack.Result{}, fmt.Errorf("creating stdout pipe: %w", err)
+		return belaykit.Result{}, fmt.Errorf("creating stdout pipe: %w", err)
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return rack.Result{}, fmt.Errorf("creating stderr pipe: %w", err)
+		return belaykit.Result{}, fmt.Errorf("creating stderr pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return rack.Result{}, ErrCLINotFound
+			return belaykit.Result{}, ErrCLINotFound
 		}
-		return rack.Result{}, &ExitError{Err: err}
+		return belaykit.Result{}, &ExitError{Err: err}
 	}
 
 	handler := c.eventHandler
@@ -135,14 +135,14 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
-			return rack.Result{}, ctx.Err()
+			return belaykit.Result{}, ctx.Err()
 		}
 
 		if handler != nil && !state.resultEmitted {
-			handler(rack.Event{Type: rack.EventResultError, Text: state.lastError})
+			handler(belaykit.Event{Type: belaykit.EventResultError, Text: state.lastError})
 		}
 		if c.observability != nil {
-			c.observability.RecordCompletion(rack.CompletionRecord{
+			c.observability.RecordCompletion(belaykit.CompletionRecord{
 				TraceID:    cfg.TraceID,
 				SessionID:  state.sessionID,
 				Prompt:     prompt,
@@ -155,7 +155,7 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 			})
 		}
 
-		return rack.Result{}, &ExitError{Err: err, Stderr: stderrBuf.String()}
+		return belaykit.Result{}, &ExitError{Err: err, Stderr: stderrBuf.String()}
 	}
 
 	resultText := state.assistantText.String()
@@ -164,8 +164,8 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 	}
 
 	if handler != nil && !state.resultEmitted {
-		handler(rack.Event{
-			Type:     rack.EventResult,
+		handler(belaykit.Event{
+			Type:     belaykit.EventResult,
 			Text:     resultText,
 			CostUSD:  state.costUSD,
 			Duration: state.durationMS,
@@ -173,7 +173,7 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 		})
 	}
 	if c.observability != nil {
-		c.observability.RecordCompletion(rack.CompletionRecord{
+		c.observability.RecordCompletion(belaykit.CompletionRecord{
 			TraceID:    cfg.TraceID,
 			SessionID:  state.sessionID,
 			Prompt:     prompt,
@@ -186,10 +186,10 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 		})
 	}
 
-	return rack.Result{Text: resultText}, nil
+	return belaykit.Result{Text: resultText}, nil
 }
 
-func validateRunConfig(cfg rack.RunConfig) error {
+func validateRunConfig(cfg belaykit.RunConfig) error {
 	if cfg.MaxTurns > 0 {
 		return &UnsupportedOptionError{Option: "WithMaxTurns"}
 	}
@@ -222,7 +222,7 @@ type runState struct {
 	resultEmitted bool
 }
 
-func (s *runState) handleJSONLine(line []byte, handler rack.EventHandler, outputStream io.Writer) {
+func (s *runState) handleJSONLine(line []byte, handler belaykit.EventHandler, outputStream io.Writer) {
 	var payload map[string]any
 	if err := json.Unmarshal(line, &payload); err != nil {
 		return
@@ -236,8 +236,8 @@ func (s *runState) handleJSONLine(line []byte, handler rack.EventHandler, output
 		if id, _ := payload["thread_id"].(string); id != "" {
 			s.sessionID = id
 			if handler != nil {
-				handler(rack.Event{
-					Type:      rack.EventSystem,
+				handler(belaykit.Event{
+					Type:      belaykit.EventSystem,
 					SessionID: id,
 					Subtype:   "init",
 					RawJSON:   raw,
@@ -247,8 +247,8 @@ func (s *runState) handleJSONLine(line []byte, handler rack.EventHandler, output
 	case "turn.started":
 		s.numTurns++
 		if handler != nil {
-			handler(rack.Event{
-				Type:    rack.EventAssistantStart,
+			handler(belaykit.Event{
+				Type:    belaykit.EventAssistantStart,
 				RawJSON: raw,
 			})
 		}
@@ -260,8 +260,8 @@ func (s *runState) handleJSONLine(line []byte, handler rack.EventHandler, output
 		s.lastError = msg
 		s.resultEmitted = true
 		if handler != nil {
-			handler(rack.Event{
-				Type:    rack.EventResultError,
+			handler(belaykit.Event{
+				Type:    belaykit.EventResultError,
 				Text:    msg,
 				IsError: true,
 				RawJSON: raw,
@@ -282,8 +282,8 @@ func (s *runState) handleJSONLine(line []byte, handler rack.EventHandler, output
 			outputStream.Write([]byte(text))
 		}
 		if handler != nil {
-			handler(rack.Event{
-				Type:    rack.EventAssistant,
+			handler(belaykit.Event{
+				Type:    belaykit.EventAssistant,
 				Text:    text,
 				RawJSON: raw,
 			})

@@ -1,4 +1,4 @@
-package rack
+package belaykit
 
 import "encoding/json"
 
@@ -22,7 +22,7 @@ const (
 	// EventResultError is emitted when the result indicates an error.
 	EventResultError EventType = "result_error"
 	// EventPhase is emitted by callers to mark phase boundaries within a run.
-	// go-rack does not generate this automatically; callers emit it to tell
+	// belaykit does not generate this automatically; callers emit it to tell
 	// observability providers that a new phase is starting.
 	EventPhase EventType = "phase"
 )

@@ -4,17 +4,17 @@ import (
 	"context"
 	"fmt"
 
-	"go-rack"
+	"belaykit"
 )
 
 // HandlerOption configures the EventHandler returned by NewEventHandler.
 type HandlerOption func(*handlerConfig)
 
 // ErrorFormatter formats an error event into text + optional blocks.
-type ErrorFormatter func(rack.Event) (string, []Block)
+type ErrorFormatter func(belaykit.Event) (string, []Block)
 
 // ResultFormatter formats a result event into text + optional blocks.
-type ResultFormatter func(rack.Event) (string, []Block)
+type ResultFormatter func(belaykit.Event) (string, []Block)
 
 type handlerConfig struct {
 	agentName      string
@@ -46,7 +46,7 @@ func WithHandlerContext(ctx context.Context) HandlerOption {
 
 // defaultErrorFormatter formats an error event for Slack.
 func defaultErrorFormatter(agentName string) ErrorFormatter {
-	return func(e rack.Event) (string, []Block) {
+	return func(e belaykit.Event) (string, []Block) {
 		prefix := "Error"
 		if agentName != "" {
 			prefix = fmt.Sprintf("[%s] Error", agentName)
@@ -58,7 +58,7 @@ func defaultErrorFormatter(agentName string) ErrorFormatter {
 
 // defaultResultFormatter formats a result event for Slack.
 func defaultResultFormatter(agentName string) ResultFormatter {
-	return func(e rack.Event) (string, []Block) {
+	return func(e belaykit.Event) (string, []Block) {
 		prefix := "Completed"
 		if agentName != "" {
 			prefix = fmt.Sprintf("[%s] Completed", agentName)
@@ -69,16 +69,16 @@ func defaultResultFormatter(agentName string) ResultFormatter {
 	}
 }
 
-// NewEventHandler returns a rack.EventHandler that dispatches Slack
+// NewEventHandler returns a belaykit.EventHandler that dispatches Slack
 // notifications based on the notifier's EventConfig. Slack calls are made in
 // goroutines so the handler never blocks the event stream.
 //
-// Composable with rack.NewLogger:
+// Composable with belaykit.NewLogger:
 //
 //	slackH := slack.NewEventHandler(notifier, ...)
-//	logH := rack.NewLogger(os.Stderr, ...)
-//	combined := func(e rack.Event) { logH(e); slackH(e) }
-func NewEventHandler(notifier *Notifier, opts ...HandlerOption) rack.EventHandler {
+//	logH := belaykit.NewLogger(os.Stderr, ...)
+//	combined := func(e belaykit.Event) { logH(e); slackH(e) }
+func NewEventHandler(notifier *Notifier, opts ...HandlerOption) belaykit.EventHandler {
 	cfg := handlerConfig{
 		ctx: context.Background(),
 	}
@@ -96,13 +96,13 @@ func NewEventHandler(notifier *Notifier, opts ...HandlerOption) rack.EventHandle
 	events := notifier.cfg.Events
 	sessionStarted := false
 
-	return func(e rack.Event) {
+	return func(e belaykit.Event) {
 		if !notifier.IsEnabled() {
 			return
 		}
 
 		switch e.Type {
-		case rack.EventSystem:
+		case belaykit.EventSystem:
 			if e.Subtype == "init" && events.OnStart && !sessionStarted {
 				sessionStarted = true
 				text := "Session started"
@@ -115,19 +115,19 @@ func NewEventHandler(notifier *Notifier, opts ...HandlerOption) rack.EventHandle
 				go notifier.StartSession(cfg.ctx, text)
 			}
 
-		case rack.EventResultError:
+		case belaykit.EventResultError:
 			if events.OnError {
 				text, blocks := cfg.errorFormatter(e)
 				go notifier.Send(cfg.ctx, text, blocks...)
 			}
 
-		case rack.EventResult:
+		case belaykit.EventResult:
 			if events.OnResult {
 				text, blocks := cfg.resultFormatter(e)
 				go notifier.EndSession(cfg.ctx, text, blocks...)
 			}
 
-		case rack.EventToolUse:
+		case belaykit.EventToolUse:
 			if events.OnToolUse {
 				text := fmt.Sprintf("Tool: %s", e.ToolName)
 				if cfg.agentName != "" {

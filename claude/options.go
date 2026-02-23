@@ -1,6 +1,6 @@
 package claude
 
-import rack "go-rack"
+import "belaykit"
 
 // ClientOption configures a Client.
 type ClientOption func(*Client)
@@ -20,7 +20,7 @@ func WithDefaultModel(model string) ClientOption {
 }
 
 // WithDefaultEventHandler sets the default event handler for all runs.
-func WithDefaultEventHandler(h rack.EventHandler) ClientOption {
+func WithDefaultEventHandler(h belaykit.EventHandler) ClientOption {
 	return func(c *Client) {
 		c.eventHandler = h
 	}
@@ -28,8 +28,8 @@ func WithDefaultEventHandler(h rack.EventHandler) ClientOption {
 
 // WithObservability sets the observability provider for tracing and completion
 // recording. When set, Run automatically calls RecordCompletion on the provider
-// with data from the result event. Use rack.WithTraceID to associate runs with traces.
-func WithObservability(provider rack.ObservabilityProvider) ClientOption {
+// with data from the result event. Use belaykit.WithTraceID to associate runs with traces.
+func WithObservability(provider belaykit.ObservabilityProvider) ClientOption {
 	return func(c *Client) {
 		c.observability = provider
 	}

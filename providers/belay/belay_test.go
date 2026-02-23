@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	rack "go-rack"
+	"belaykit"
 )
 
 func approxEqual(a, b, epsilon float64) bool {
@@ -31,26 +31,26 @@ func TestMultiPhaseRun(t *testing.T) {
 	p := NewProvider(WithDir(dir))
 
 	_ = p.StartSession(nil)
-	tid := p.StartTrace(rack.TraceConfig{Name: "test-pipeline"}, nil)
+	tid := p.StartTrace(belaykit.TraceConfig{Name: "test-pipeline"}, nil)
 	handler := p.EventHandler()
 
 	// Phase 0: subreddit-discovery
-	handler(rack.Event{Type: rack.EventPhase, PhaseName: "subreddit-discovery"})
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "search_reddit", ToolID: "tool_01"})
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "tool_01"})
-	p.RecordCompletion(rack.CompletionRecord{
+	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "subreddit-discovery"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "search_reddit", ToolID: "tool_01"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "tool_01"})
+	p.RecordCompletion(belaykit.CompletionRecord{
 		Model:      "claude-opus-4-20250514",
 		CostUSD:    0.05,
 		DurationMS: 1200,
 	})
 
 	// Phase 1: thread-discovery
-	handler(rack.Event{Type: rack.EventPhase, PhaseName: "thread-discovery"})
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "fetch_threads", ToolID: "tool_02"})
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "tool_02"})
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "analyze_thread", ToolID: "tool_03"})
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "tool_03"})
-	p.RecordCompletion(rack.CompletionRecord{
+	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "thread-discovery"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "fetch_threads", ToolID: "tool_02"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "tool_02"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "analyze_thread", ToolID: "tool_03"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "tool_03"})
+	p.RecordCompletion(belaykit.CompletionRecord{
 		Model:      "claude-opus-4-20250514",
 		CostUSD:    0.08,
 		DurationMS: 2000,
@@ -144,12 +144,12 @@ func TestToolCallNodeType(t *testing.T) {
 	p := NewProvider(WithDir(dir))
 
 	_ = p.StartSession(nil)
-	tid := p.StartTrace(rack.TraceConfig{Name: "tool-test"}, nil)
+	tid := p.StartTrace(belaykit.TraceConfig{Name: "tool-test"}, nil)
 	handler := p.EventHandler()
 
-	handler(rack.Event{Type: rack.EventPhase, PhaseName: "phase-1"})
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "Bash", ToolID: "t1"})
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "phase-1"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "Bash", ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "t1"})
 	p.EndTrace(tid, nil)
 
 	data, err := os.ReadFile(filepath.Join(dir, tid+".json"))
@@ -179,14 +179,14 @@ func TestDefaultPhaseCreatedWithoutExplicitPhase(t *testing.T) {
 	p := NewProvider(WithDir(dir))
 
 	_ = p.StartSession(nil)
-	tid := p.StartTrace(rack.TraceConfig{Name: "no-phase"}, nil)
+	tid := p.StartTrace(belaykit.TraceConfig{Name: "no-phase"}, nil)
 	handler := p.EventHandler()
 
 	// Emit tool events without a prior EventPhase
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "Read", ToolID: "t1"})
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "Read", ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "t1"})
 
-	p.RecordCompletion(rack.CompletionRecord{
+	p.RecordCompletion(belaykit.CompletionRecord{
 		Model:      "claude-sonnet-4-20250514",
 		CostUSD:    0.01,
 		DurationMS: 500,
@@ -240,7 +240,7 @@ func TestRecordCompletionWithoutStartTraceIsNoop(t *testing.T) {
 	p := NewProvider()
 
 	// Should not panic
-	p.RecordCompletion(rack.CompletionRecord{
+	p.RecordCompletion(belaykit.CompletionRecord{
 		Model:      "opus",
 		CostUSD:    1.0,
 		DurationMS: 1000,
@@ -252,9 +252,9 @@ func TestEventHandlerWithoutStartTraceIsNoop(t *testing.T) {
 	handler := p.EventHandler()
 
 	// Should not panic
-	handler(rack.Event{Type: rack.EventPhase, PhaseName: "orphan"})
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "Bash", ToolID: "t1"})
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "orphan"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "Bash", ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "t1"})
 }
 
 func TestToolResultWithoutMatchingUseIsIgnored(t *testing.T) {
@@ -262,12 +262,12 @@ func TestToolResultWithoutMatchingUseIsIgnored(t *testing.T) {
 	p := NewProvider(WithDir(dir))
 
 	_ = p.StartSession(nil)
-	tid := p.StartTrace(rack.TraceConfig{Name: "orphan-result"}, nil)
+	tid := p.StartTrace(belaykit.TraceConfig{Name: "orphan-result"}, nil)
 	handler := p.EventHandler()
 
-	handler(rack.Event{Type: rack.EventPhase, PhaseName: "phase-1"})
+	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "phase-1"})
 	// ToolResult without a prior ToolUse for this ID
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "unknown"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "unknown"})
 
 	p.EndTrace(tid, nil)
 
@@ -287,13 +287,13 @@ func TestToolDurationIsRecorded(t *testing.T) {
 	p := NewProvider(WithDir(dir))
 
 	_ = p.StartSession(nil)
-	tid := p.StartTrace(rack.TraceConfig{Name: "duration-test"}, nil)
+	tid := p.StartTrace(belaykit.TraceConfig{Name: "duration-test"}, nil)
 	handler := p.EventHandler()
 
-	handler(rack.Event{Type: rack.EventPhase, PhaseName: "phase-1"})
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "Bash", ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "phase-1"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "Bash", ToolID: "t1"})
 	time.Sleep(10 * time.Millisecond) // ensure nonzero duration
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "t1"})
 	p.EndTrace(tid, nil)
 
 	data, _ := os.ReadFile(filepath.Join(dir, tid+".json"))
@@ -314,12 +314,12 @@ func TestCostAccumulatesAcrossCompletions(t *testing.T) {
 	p := NewProvider(WithDir(dir))
 
 	_ = p.StartSession(nil)
-	tid := p.StartTrace(rack.TraceConfig{Name: "cost-test"}, nil)
+	tid := p.StartTrace(belaykit.TraceConfig{Name: "cost-test"}, nil)
 	handler := p.EventHandler()
 
-	handler(rack.Event{Type: rack.EventPhase, PhaseName: "expensive-phase"})
-	p.RecordCompletion(rack.CompletionRecord{CostUSD: 0.10, DurationMS: 100, Model: "opus"})
-	p.RecordCompletion(rack.CompletionRecord{CostUSD: 0.05, DurationMS: 200, Model: "opus"})
+	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "expensive-phase"})
+	p.RecordCompletion(belaykit.CompletionRecord{CostUSD: 0.10, DurationMS: 100, Model: "opus"})
+	p.RecordCompletion(belaykit.CompletionRecord{CostUSD: 0.05, DurationMS: 200, Model: "opus"})
 	p.EndTrace(tid, nil)
 
 	data, _ := os.ReadFile(filepath.Join(dir, tid+".json"))
@@ -340,7 +340,7 @@ func TestOutputDirIsCreated(t *testing.T) {
 	p := NewProvider(WithDir(dir))
 
 	_ = p.StartSession(nil)
-	tid := p.StartTrace(rack.TraceConfig{Name: "mkdir-test"}, nil)
+	tid := p.StartTrace(belaykit.TraceConfig{Name: "mkdir-test"}, nil)
 	p.EndTrace(tid, nil)
 
 	if _, err := os.Stat(filepath.Join(dir, tid+".json")); err != nil {
@@ -353,13 +353,13 @@ func TestJSONSchemaMatchesBelayNode(t *testing.T) {
 	p := NewProvider(WithDir(dir))
 
 	_ = p.StartSession(nil)
-	tid := p.StartTrace(rack.TraceConfig{Name: "schema-test"}, nil)
+	tid := p.StartTrace(belaykit.TraceConfig{Name: "schema-test"}, nil)
 	handler := p.EventHandler()
 
-	handler(rack.Event{Type: rack.EventPhase, PhaseName: "phase-1"})
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "Bash", ToolID: "t1"})
-	handler(rack.Event{Type: rack.EventToolResult, ToolID: "t1"})
-	p.RecordCompletion(rack.CompletionRecord{Model: "opus", CostUSD: 0.01, DurationMS: 100})
+	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "phase-1"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "Bash", ToolID: "t1"})
+	handler(belaykit.Event{Type: belaykit.EventToolResult, ToolID: "t1"})
+	p.RecordCompletion(belaykit.CompletionRecord{Model: "opus", CostUSD: 0.01, DurationMS: 100})
 	p.EndTrace(tid, nil)
 
 	data, _ := os.ReadFile(filepath.Join(dir, tid+".json"))

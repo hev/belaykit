@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"go-rack"
+	"belaykit"
 )
 
 func TestNewEventHandler(t *testing.T) {
@@ -43,8 +43,8 @@ func TestNewEventHandler(t *testing.T) {
 	handler := NewEventHandler(notifier, WithHandlerAgentName("test-agent"))
 
 	// Init event should trigger StartSession.
-	handler(rack.Event{
-		Type:      rack.EventSystem,
+	handler(belaykit.Event{
+		Type:      belaykit.EventSystem,
 		Subtype:   "init",
 		SessionID: "sess-123",
 	})
@@ -52,15 +52,15 @@ func TestNewEventHandler(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Error event should trigger Send.
-	handler(rack.Event{
-		Type: rack.EventResultError,
+	handler(belaykit.Event{
+		Type: belaykit.EventResultError,
 		Text: "something broke",
 	})
 	time.Sleep(100 * time.Millisecond)
 
 	// Result event should trigger EndSession.
-	handler(rack.Event{
-		Type:     rack.EventResult,
+	handler(belaykit.Event{
+		Type:     belaykit.EventResult,
 		NumTurns: 5,
 		Duration: 3000,
 		CostUSD:  0.05,
@@ -122,10 +122,10 @@ func TestNewEventHandlerOnlyConfiguredEvents(t *testing.T) {
 	)
 	handler := NewEventHandler(notifier)
 
-	handler(rack.Event{Type: rack.EventSystem, Subtype: "init"})
-	handler(rack.Event{Type: rack.EventResultError, Text: "err"})
-	handler(rack.Event{Type: rack.EventResult, NumTurns: 1})
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "bash"})
+	handler(belaykit.Event{Type: belaykit.EventSystem, Subtype: "init"})
+	handler(belaykit.Event{Type: belaykit.EventResultError, Text: "err"})
+	handler(belaykit.Event{Type: belaykit.EventResult, NumTurns: 1})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "bash"})
 	time.Sleep(100 * time.Millisecond)
 
 	mu.Lock()
@@ -164,10 +164,10 @@ func TestNewEventHandlerToolUse(t *testing.T) {
 	)
 	handler := NewEventHandler(notifier, WithHandlerAgentName("myagent"))
 
-	handler(rack.Event{Type: rack.EventSystem, Subtype: "init"})
+	handler(belaykit.Event{Type: belaykit.EventSystem, Subtype: "init"})
 	time.Sleep(100 * time.Millisecond)
 
-	handler(rack.Event{Type: rack.EventToolUse, ToolName: "Read"})
+	handler(belaykit.Event{Type: belaykit.EventToolUse, ToolName: "Read"})
 	time.Sleep(100 * time.Millisecond)
 
 	mu.Lock()
@@ -212,15 +212,15 @@ func TestNewEventHandlerCustomFormatters(t *testing.T) {
 	)
 
 	handler := NewEventHandler(notifier,
-		WithErrorFormatter(func(e rack.Event) (string, []Block) {
+		WithErrorFormatter(func(e belaykit.Event) (string, []Block) {
 			return "CUSTOM ERROR: " + e.Text, nil
 		}),
 	)
 
-	handler(rack.Event{Type: rack.EventSystem, Subtype: "init"})
+	handler(belaykit.Event{Type: belaykit.EventSystem, Subtype: "init"})
 	time.Sleep(100 * time.Millisecond)
 
-	handler(rack.Event{Type: rack.EventResultError, Text: "boom"})
+	handler(belaykit.Event{Type: belaykit.EventResultError, Text: "boom"})
 	time.Sleep(100 * time.Millisecond)
 
 	mu.Lock()
@@ -239,9 +239,9 @@ func TestNewEventHandlerDisabled(t *testing.T) {
 	handler := NewEventHandler(notifier)
 
 	// Should not panic.
-	handler(rack.Event{Type: rack.EventSystem, Subtype: "init"})
-	handler(rack.Event{Type: rack.EventResultError, Text: "err"})
-	handler(rack.Event{Type: rack.EventResult, NumTurns: 1})
+	handler(belaykit.Event{Type: belaykit.EventSystem, Subtype: "init"})
+	handler(belaykit.Event{Type: belaykit.EventResultError, Text: "err"})
+	handler(belaykit.Event{Type: belaykit.EventResult, NumTurns: 1})
 }
 
 func TestEventHandlerComposable(t *testing.T) {
@@ -249,10 +249,10 @@ func TestEventHandlerComposable(t *testing.T) {
 	slackH := NewEventHandler(notifier)
 
 	var logCalled bool
-	logH := func(e rack.Event) { logCalled = true }
+	logH := func(e belaykit.Event) { logCalled = true }
 
-	combined := func(e rack.Event) { logH(e); slackH(e) }
-	combined(rack.Event{Type: rack.EventResult})
+	combined := func(e belaykit.Event) { logH(e); slackH(e) }
+	combined(belaykit.Event{Type: belaykit.EventResult})
 
 	if !logCalled {
 		t.Error("log handler should have been called")

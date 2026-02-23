@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	rack "go-rack"
+	"belaykit"
 )
 
 func TestNewClientDefaults(t *testing.T) {
@@ -25,7 +25,7 @@ func TestNewClientDefaults(t *testing.T) {
 
 func TestNewClientWithOptions(t *testing.T) {
 	var handlerCalled bool
-	handler := func(rack.Event) { handlerCalled = true }
+	handler := func(belaykit.Event) { handlerCalled = true }
 
 	c := NewClient(
 		WithExecutable("/usr/local/bin/codex"),
@@ -43,7 +43,7 @@ func TestNewClientWithOptions(t *testing.T) {
 		t.Error("eventHandler should not be nil")
 	}
 
-	c.eventHandler(rack.Event{})
+	c.eventHandler(belaykit.Event{})
 	if !handlerCalled {
 		t.Error("event handler was not called")
 	}
@@ -63,13 +63,13 @@ func TestRunErrCLINotFound(t *testing.T) {
 func TestRunUnsupportedOptions(t *testing.T) {
 	tests := []struct {
 		name string
-		opts []rack.RunOption
+		opts []belaykit.RunOption
 		want string
 	}{
-		{name: "max turns", opts: []rack.RunOption{rack.WithMaxTurns(2)}, want: "WithMaxTurns"},
-		{name: "max output", opts: []rack.RunOption{rack.WithMaxOutputTokens(100)}, want: "WithMaxOutputTokens"},
-		{name: "allowed tools", opts: []rack.RunOption{rack.WithAllowedTools("Bash(*)")}, want: "WithAllowedTools"},
-		{name: "disallowed tools", opts: []rack.RunOption{rack.WithDisallowedTools("Write(*)")}, want: "WithDisallowedTools"},
+		{name: "max turns", opts: []belaykit.RunOption{belaykit.WithMaxTurns(2)}, want: "WithMaxTurns"},
+		{name: "max output", opts: []belaykit.RunOption{belaykit.WithMaxOutputTokens(100)}, want: "WithMaxOutputTokens"},
+		{name: "allowed tools", opts: []belaykit.RunOption{belaykit.WithAllowedTools("Bash(*)")}, want: "WithAllowedTools"},
+		{name: "disallowed tools", opts: []belaykit.RunOption{belaykit.WithDisallowedTools("Write(*)")}, want: "WithDisallowedTools"},
 	}
 
 	c := NewClient(WithExecutable("true"))
@@ -111,12 +111,12 @@ printf 'hello world' > "$out"
 
 	c := NewClient(WithExecutable(exe), WithDefaultModel("gpt-5-codex"))
 
-	var gotEvents []rack.EventType
+	var gotEvents []belaykit.EventType
 	var streamOut bytes.Buffer
 	var assistantFromEvents stringsBuilder
-	handler := func(ev rack.Event) {
+	handler := func(ev belaykit.Event) {
 		gotEvents = append(gotEvents, ev.Type)
-		if ev.Type == rack.EventAssistant {
+		if ev.Type == belaykit.EventAssistant {
 			assistantFromEvents.WriteString(ev.Text)
 		}
 	}
@@ -124,8 +124,8 @@ printf 'hello world' > "$out"
 	res, err := c.Run(
 		t.Context(),
 		"say hi",
-		rack.WithEventHandler(handler),
-		rack.WithOutputStream(&streamOut),
+		belaykit.WithEventHandler(handler),
+		belaykit.WithOutputStream(&streamOut),
 	)
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
@@ -140,10 +140,10 @@ printf 'hello world' > "$out"
 		t.Fatalf("assistant event text = %q, want %q", assistantFromEvents.String(), "hello world")
 	}
 
-	mustContainEvent(t, gotEvents, rack.EventSystem)
-	mustContainEvent(t, gotEvents, rack.EventAssistantStart)
-	mustContainEvent(t, gotEvents, rack.EventAssistant)
-	mustContainEvent(t, gotEvents, rack.EventResult)
+	mustContainEvent(t, gotEvents, belaykit.EventSystem)
+	mustContainEvent(t, gotEvents, belaykit.EventAssistantStart)
+	mustContainEvent(t, gotEvents, belaykit.EventAssistant)
+	mustContainEvent(t, gotEvents, belaykit.EventResult)
 }
 
 func TestRunFailureFromFakeExecutable(t *testing.T) {
@@ -156,13 +156,13 @@ exit 1
 
 	c := NewClient(WithExecutable(exe))
 	var gotErrorEvent bool
-	handler := func(ev rack.Event) {
-		if ev.Type == rack.EventResultError && ev.Text == "boom" {
+	handler := func(ev belaykit.Event) {
+		if ev.Type == belaykit.EventResultError && ev.Text == "boom" {
 			gotErrorEvent = true
 		}
 	}
 
-	_, err := c.Run(t.Context(), "hello", rack.WithEventHandler(handler))
+	_, err := c.Run(t.Context(), "hello", belaykit.WithEventHandler(handler))
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -187,7 +187,7 @@ func (s *stringsBuilder) String() string {
 	return s.b.String()
 }
 
-func mustContainEvent(t *testing.T, got []rack.EventType, want rack.EventType) {
+func mustContainEvent(t *testing.T, got []belaykit.EventType, want belaykit.EventType) {
 	t.Helper()
 	for _, ev := range got {
 		if ev == want {

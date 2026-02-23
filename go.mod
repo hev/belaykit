@@ -1,4 +1,4 @@
-module go-rack
+module belaykit
 
 go 1.25.5
 

@@ -1,4 +1,4 @@
-package rack
+package belaykit
 
 import (
 	"fmt"

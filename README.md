@@ -1,19 +1,19 @@
-# go-rack
+# belaykit
 
 <p align="center">
-  <img src="go-rack.png" alt="go-rack" width="400" />
+  <img src="belaykit.png" alt="belaykit" width="400" />
 </p>
 
-A **rack** is the loop of gear slung over a climber's shoulder — cams, nuts, draws, everything needed for the route ahead. `go-rack` carries your coding-agent tools the same way: a lightweight Go library that keeps multiple AI providers organized behind a single, common interface.
+A **belay** is the system that catches a climber's fall — the rope, the device, the partner holding the line. `belaykit` works the same way for your coding agents: a lightweight Go library that keeps multiple AI providers organized behind a single, common interface, so you're always on belay.
 
 Current providers:
-- Claude CLI (`go-rack/claude`)
-- Codex CLI (`go-rack/codex`)
+- Claude CLI (`belaykit/claude`)
+- Codex CLI (`belaykit/codex`)
 
 ## Install
 
 ```bash
-go get go-rack
+go get belaykit
 ```
 
 You also need the provider CLIs installed and authenticated:
@@ -22,7 +22,7 @@ You also need the provider CLIs installed and authenticated:
 
 ## Core Interface
 
-Both providers implement `rack.Agent`:
+Both providers implement `belaykit.Agent`:
 
 ```go
 type Agent interface {
@@ -42,8 +42,8 @@ import (
     "fmt"
     "log"
 
-    rack "go-rack"
-    "go-rack/claude"
+    "belaykit"
+    "belaykit/claude"
 )
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
     res, err := client.Run(
         ctx,
         "Write a small Go function that reverses a string.",
-        rack.WithMaxTurns(3),
+        belaykit.WithMaxTurns(3),
     )
     if err != nil {
         log.Fatal(err)
@@ -76,8 +76,8 @@ import (
     "fmt"
     "log"
 
-    rack "go-rack"
-    "go-rack/codex"
+    "belaykit"
+    "belaykit/codex"
 )
 
 func main() {
@@ -101,33 +101,33 @@ func main() {
 
 ## Shared Run Options
 
-These `rack` options work across providers:
-- `rack.WithModel(...)`
-- `rack.WithSystemPrompt(...)`
-- `rack.WithEventHandler(...)`
-- `rack.WithOutputStream(...)`
-- `rack.WithTraceID(...)`
+These `belaykit` options work across providers:
+- `belaykit.WithModel(...)`
+- `belaykit.WithSystemPrompt(...)`
+- `belaykit.WithEventHandler(...)`
+- `belaykit.WithOutputStream(...)`
+- `belaykit.WithTraceID(...)`
 
 ## Provider Differences
 
 Claude supports additional controls:
-- `rack.WithMaxTurns(...)`
-- `rack.WithMaxOutputTokens(...)`
-- `rack.WithAllowedTools(...)`
-- `rack.WithDisallowedTools(...)`
+- `belaykit.WithMaxTurns(...)`
+- `belaykit.WithMaxOutputTokens(...)`
+- `belaykit.WithAllowedTools(...)`
+- `belaykit.WithDisallowedTools(...)`
 
 Codex currently returns explicit errors if those four options are set.
 
 ## Streaming Events
 
-Use `rack.WithEventHandler` to receive normalized events (`assistant`, `assistant_start`, `tool_use`, `tool_result`, `result`, `result_error`):
+Use `belaykit.WithEventHandler` to receive normalized events (`assistant`, `assistant_start`, `tool_use`, `tool_result`, `result`, `result_error`):
 
 ```go
-handler := func(ev rack.Event) {
+handler := func(ev belaykit.Event) {
     switch ev.Type {
-    case rack.EventAssistant:
+    case belaykit.EventAssistant:
         fmt.Print(ev.Text)
-    case rack.EventResultError:
+    case belaykit.EventResultError:
         fmt.Println("run failed:", ev.Text)
     }
 }
@@ -136,12 +136,12 @@ handler := func(ev rack.Event) {
 Then pass it to `Run`:
 
 ```go
-res, err := client.Run(ctx, prompt, rack.WithEventHandler(handler))
+res, err := client.Run(ctx, prompt, belaykit.WithEventHandler(handler))
 ```
 
 ## Slack Notifications
 
-The `go-rack/slack` package provides shared Slack notifications for any agent — zero external dependencies, raw HTTP only. It supports both webhook and bot-token modes, with automatic threading and `@mention` on session end.
+The `belaykit/slack` package provides shared Slack notifications for any agent — zero external dependencies, raw HTTP only. It supports both webhook and bot-token modes, with automatic threading and `@mention` on session end.
 
 ### Config
 
@@ -168,7 +168,7 @@ Webhook-only mode (no threading) is also supported — set `webhook_url` instead
 Thread-aware, concurrency-safe. All methods no-op when disabled — no nil checks needed.
 
 ```go
-import rackslack "go-rack/slack"
+import rackslack "belaykit/slack"
 
 notifier := rackslack.NewNotifier(cfg.Slack)
 notifier.StartSession(ctx, "Session started")   // captures thread TS
@@ -178,13 +178,13 @@ notifier.EndSession(ctx, "All done!")            // threads + @mentions
 
 ### Auto EventHandler
 
-Returns a `rack.EventHandler` that dispatches Slack notifications based on `EventConfig`. Calls are made in goroutines so the handler never blocks the event stream.
+Returns a `belaykit.EventHandler` that dispatches Slack notifications based on `EventConfig`. Calls are made in goroutines so the handler never blocks the event stream.
 
 ```go
 handler := rackslack.NewEventHandler(notifier,
     rackslack.WithHandlerAgentName("ralph"),
 )
-res, err := client.Run(ctx, prompt, rack.WithEventHandler(handler))
+res, err := client.Run(ctx, prompt, belaykit.WithEventHandler(handler))
 ```
 
 Options: `WithHandlerAgentName`, `WithErrorFormatter`, `WithResultFormatter`, `WithHandlerContext`.
@@ -193,9 +193,9 @@ Options: `WithHandlerAgentName`, `WithErrorFormatter`, `WithResultFormatter`, `W
 
 ```go
 slackH := rackslack.NewEventHandler(notifier)
-logH := rack.NewLogger(os.Stderr)
-combined := func(e rack.Event) { logH(e); slackH(e) }
-res, err := client.Run(ctx, prompt, rack.WithEventHandler(combined))
+logH := belaykit.NewLogger(os.Stderr)
+combined := func(e belaykit.Event) { logH(e); slackH(e) }
+res, err := client.Run(ctx, prompt, belaykit.WithEventHandler(combined))
 ```
 
 ## Observability
@@ -204,4 +204,4 @@ Both providers support pluggable observability via:
 - `claude.WithObservability(...)`
 - `codex.WithObservability(...)`
 
-Use `rack.WithTraceID(...)` on each run to attach completions to a trace.
+Use `belaykit.WithTraceID(...)` on each run to attach completions to a trace.

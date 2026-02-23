@@ -10,11 +10,11 @@ import (
 	"os"
 	"os/exec"
 
-	rack "go-rack"
+	"belaykit"
 )
 
-// Verify Client implements rack.Agent.
-var _ rack.Agent = (*Client)(nil)
+// Verify Client implements belaykit.Agent.
+var _ belaykit.Agent = (*Client)(nil)
 
 // ErrCLINotFound indicates the claude CLI binary was not found on PATH.
 var ErrCLINotFound = errors.New("claude CLI not found")
@@ -40,8 +40,8 @@ func (e *ExitError) Unwrap() error {
 type Client struct {
 	executable    string
 	defaultModel  string
-	eventHandler  rack.EventHandler
-	observability rack.ObservabilityProvider
+	eventHandler  belaykit.EventHandler
+	observability belaykit.ObservabilityProvider
 }
 
 // NewClient creates a new Claude CLI client.
@@ -56,8 +56,8 @@ func NewClient(opts ...ClientOption) *Client {
 }
 
 // Run executes the Claude CLI with the given prompt and returns the result.
-func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption) (rack.Result, error) {
-	cfg := rack.NewRunConfig(opts...)
+func (c *Client) Run(ctx context.Context, prompt string, opts ...belaykit.RunOption) (belaykit.Result, error) {
+	cfg := belaykit.NewRunConfig(opts...)
 
 	// Determine model (per-run overrides client default)
 	model := c.defaultModel
@@ -100,19 +100,19 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return rack.Result{}, fmt.Errorf("creating stdout pipe: %w", err)
+		return belaykit.Result{}, fmt.Errorf("creating stdout pipe: %w", err)
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return rack.Result{}, fmt.Errorf("creating stderr pipe: %w", err)
+		return belaykit.Result{}, fmt.Errorf("creating stderr pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return rack.Result{}, ErrCLINotFound
+			return belaykit.Result{}, ErrCLINotFound
 		}
-		return rack.Result{}, &ExitError{Err: err}
+		return belaykit.Result{}, &ExitError{Err: err}
 	}
 
 	// Determine event handler (per-run overrides client default)
@@ -130,7 +130,7 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
-		var event rack.StreamEvent
+		var event belaykit.StreamEvent
 		if err := json.Unmarshal(line, &event); err != nil {
 			continue
 		}
@@ -143,14 +143,14 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 				sessionID = event.SessionID
 			}
 			if handler != nil {
-				handler(rack.Event{
-					Type:      rack.EventSystem,
+				handler(belaykit.Event{
+					Type:      belaykit.EventSystem,
 					SessionID: event.SessionID,
 					Subtype:   event.Subtype,
 					RawJSON:   rawLine,
 				})
 				if event.Subtype == "init" {
-					handler(rack.Event{Type: rack.EventAssistantStart})
+					handler(belaykit.Event{Type: belaykit.EventAssistantStart})
 				}
 			}
 		case "assistant":
@@ -159,8 +159,8 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 					switch block.Type {
 					case "text":
 						if handler != nil {
-							handler(rack.Event{
-								Type:    rack.EventAssistant,
+							handler(belaykit.Event{
+								Type:    belaykit.EventAssistant,
 								Text:    block.Text,
 								RawJSON: rawLine,
 							})
@@ -170,8 +170,8 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 						}
 					case "tool_use":
 						if handler != nil {
-							handler(rack.Event{
-								Type:      rack.EventToolUse,
+							handler(belaykit.Event{
+								Type:      belaykit.EventToolUse,
 								ToolName:  block.Name,
 								ToolID:    block.ID,
 								ToolInput: block.Input,
@@ -188,8 +188,8 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 					if block.Type == "tool_result" {
 						hadToolResults = true
 						if handler != nil {
-							handler(rack.Event{
-								Type:    rack.EventToolResult,
+							handler(belaykit.Event{
+								Type:    belaykit.EventToolResult,
 								Text:    block.Content,
 								ToolID:  block.ToolUseID,
 								RawJSON: rawLine,
@@ -198,18 +198,18 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 					}
 				}
 				if hadToolResults && handler != nil {
-					handler(rack.Event{Type: rack.EventAssistantStart})
+					handler(belaykit.Event{Type: belaykit.EventAssistantStart})
 				}
 			}
 		case "result":
 			resultText = event.Result
-			evType := rack.EventResult
+			evType := belaykit.EventResult
 			isError := event.IsError || event.Subtype == "error"
 			if isError {
-				evType = rack.EventResultError
+				evType = belaykit.EventResultError
 			}
 			if handler != nil {
-				handler(rack.Event{
+				handler(belaykit.Event{
 					Type:     evType,
 					Text:     event.Result,
 					Subtype:  event.Subtype,
@@ -221,16 +221,16 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 				})
 			}
 			if c.observability != nil {
-				c.observability.RecordCompletion(rack.CompletionRecord{
-					TraceID:    cfg.TraceID,
-					SessionID:  sessionID,
-					Prompt:     prompt,
-					Response:   event.Result,
-					Model:      model,
-					CostUSD:    event.CostUSD,
-					DurationMS: event.DurationMS,
-					NumTurns:   event.NumTurns,
-					IsError:    isError,
+				c.observability.RecordCompletion(belaykit.CompletionRecord{
+					TraceID:      cfg.TraceID,
+					SessionID:    sessionID,
+					Prompt:       prompt,
+					Response:     event.Result,
+					Model:        model,
+					CostUSD:      event.CostUSD,
+					DurationMS:   event.DurationMS,
+					NumTurns:     event.NumTurns,
+					IsError:      isError,
 				})
 			}
 		}
@@ -242,13 +242,13 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...rack.RunOption)
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
-			return rack.Result{}, ctx.Err()
+			return belaykit.Result{}, ctx.Err()
 		}
-		return rack.Result{}, &ExitError{
+		return belaykit.Result{}, &ExitError{
 			Err:    err,
 			Stderr: stderrBuf.String(),
 		}
 	}
 
-	return rack.Result{Text: resultText}, nil
+	return belaykit.Result{Text: resultText}, nil
 }

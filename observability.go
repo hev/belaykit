@@ -1,4 +1,4 @@
-package rack
+package belaykit
 
 // ObservabilityProvider is the interface that observability partners implement
 // to receive trace and completion data from agent invocations.
@@ -34,13 +34,15 @@ type TraceConfig struct {
 // CompletionRecord holds data about a single LLM completion.
 // Fields are populated automatically from the agent result event.
 type CompletionRecord struct {
-	TraceID    string  // Trace this completion belongs to (from WithTraceID)
-	SessionID  string  // Agent session ID (from the system init event)
-	Prompt     string  // The input prompt
-	Response   string  // The result text
-	Model      string  // The model used (resolved from aliases)
-	CostUSD    float64 // Total cost in USD
-	DurationMS int64   // Total duration in milliseconds
-	NumTurns   int     // Number of agentic turns
-	IsError    bool    // Whether the result was an error
+	TraceID      string  // Trace this completion belongs to (from WithTraceID)
+	SessionID    string  // Agent session ID (from the system init event)
+	Prompt       string  // The input prompt
+	Response     string  // The result text
+	Model        string  // The model used (resolved from aliases)
+	CostUSD      float64 // Total cost in USD
+	DurationMS   int64   // Total duration in milliseconds
+	NumTurns     int     // Number of agentic turns
+	IsError      bool    // Whether the result was an error
+	InputTokens  int     // Total input tokens used
+	OutputTokens int     // Total output tokens used
 }

@@ -4,18 +4,18 @@
 // Usage:
 //
 //	bp := belay.NewProvider(belay.WithDir(".belay/traces"))
-//	logger := rack.NewLogger(os.Stderr)
+//	logger := belaykit.NewLogger(os.Stderr)
 //	client := claude.NewClient(
 //	    claude.WithObservability(bp),
-//	    claude.WithDefaultEventHandler(func(e rack.Event) {
+//	    claude.WithDefaultEventHandler(func(e belaykit.Event) {
 //	        logger(e)
 //	        bp.EventHandler()(e)
 //	    }),
 //	)
 //
-//	tid := bp.StartTrace(rack.TraceConfig{Name: "my-run"}, nil)
-//	handler(rack.Event{Type: rack.EventPhase, PhaseName: "phase-1"})
-//	client.Run(ctx, prompt, rack.WithTraceID(tid))
+//	tid := bp.StartTrace(belaykit.TraceConfig{Name: "my-run"}, nil)
+//	handler(belaykit.Event{Type: belaykit.EventPhase, PhaseName: "phase-1"})
+//	client.Run(ctx, prompt, belaykit.WithTraceID(tid))
 //	bp.EndTrace(tid, nil) // writes JSON file
 package belay
 
@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	rack "go-rack"
+	"belaykit"
 
 	"github.com/google/uuid"
 )
@@ -48,10 +48,12 @@ type traceNode struct {
 	Children      []*traceNode `json:"children,omitempty"`
 }
 
-// Provider implements rack.ObservabilityProvider and writes trace trees
+// Provider implements belaykit.ObservabilityProvider and writes trace trees
 // as JSON files that belay can read.
 type Provider struct {
-	dir string // output directory (default ".belay/traces")
+	dir           string           // output directory (default ".belay/traces")
+	pricing       belaykit.ModelPricing // model pricing for cost estimation
+	contextWindow int              // context window size in tokens
 
 	mu           sync.Mutex
 	root         *traceNode            // in-progress trace tree
@@ -61,6 +63,8 @@ type Provider struct {
 	toolStart    map[string]time.Time  // toolID -> start time
 	toolNodes    map[string]*traceNode // toolID -> in-progress tool node
 	traceID      string                // current trace ID
+	inputTokens  int                   // accumulated input token estimate
+	outputTokens int                   // accumulated output token estimate
 }
 
 // Option configures a Provider.
@@ -70,6 +74,20 @@ type Option func(*Provider)
 func WithDir(dir string) Option {
 	return func(p *Provider) {
 		p.dir = dir
+	}
+}
+
+// WithPricing sets the model pricing used for cost estimation.
+func WithPricing(pricing belaykit.ModelPricing) Option {
+	return func(p *Provider) {
+		p.pricing = pricing
+	}
+}
+
+// WithContextWindow sets the context window size in tokens for utilization tracking.
+func WithContextWindow(tokens int) Option {
+	return func(p *Provider) {
+		p.contextWindow = tokens
 	}
 }
 
@@ -96,7 +114,7 @@ func (p *Provider) StartSession(metadata map[string]any) string {
 }
 
 // StartTrace begins a new trace.
-func (p *Provider) StartTrace(config rack.TraceConfig, inputs map[string]any) string {
+func (p *Provider) StartTrace(config belaykit.TraceConfig, inputs map[string]any) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -111,6 +129,8 @@ func (p *Provider) StartTrace(config rack.TraceConfig, inputs map[string]any) st
 	p.currentPhase = nil
 	p.toolStart = make(map[string]time.Time)
 	p.toolNodes = make(map[string]*traceNode)
+	p.inputTokens = 0
+	p.outputTokens = 0
 	return id
 }
 
@@ -134,7 +154,7 @@ func (p *Provider) EndTrace(traceID string, outputs map[string]any) {
 
 // RecordCompletion records an LLM completion, updating the current phase
 // with cost, model, and duration information.
-func (p *Provider) RecordCompletion(record rack.CompletionRecord) {
+func (p *Provider) RecordCompletion(record belaykit.CompletionRecord) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -154,19 +174,35 @@ func (p *Provider) RecordCompletion(record rack.CompletionRecord) {
 	}
 
 	p.currentPhase.Model = record.Model
-	p.currentPhase.CostUSD += record.CostUSD
 	p.currentPhase.DurationMS += record.DurationMS
+
+	// Use token counts from record if available, otherwise use accumulated estimates
+	inTok := record.InputTokens
+	outTok := record.OutputTokens
+	if inTok == 0 && outTok == 0 {
+		inTok = p.inputTokens
+		outTok = p.outputTokens
+	}
+	p.currentPhase.InputTokens += inTok
+	p.currentPhase.OutputTokens += outTok
+
+	// Use cost from record if available, otherwise estimate from pricing
+	cost := record.CostUSD
+	if cost == 0 && (inTok > 0 || outTok > 0) {
+		cost = p.pricing.Cost(inTok, outTok)
+	}
+	p.currentPhase.CostUSD += cost
 }
 
 // EventHandler returns an EventHandler function that captures tool-level
 // events for the trace tree. Compose it alongside the logger:
 //
-//	handler := func(e rack.Event) {
+//	handler := func(e belaykit.Event) {
 //	    logger(e)
 //	    bp.EventHandler()(e)
 //	}
-func (p *Provider) EventHandler() rack.EventHandler {
-	return func(e rack.Event) {
+func (p *Provider) EventHandler() belaykit.EventHandler {
+	return func(e belaykit.Event) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 
@@ -174,18 +210,32 @@ func (p *Provider) EventHandler() rack.EventHandler {
 			return
 		}
 
+		// Accumulate token estimates from events (mirrors logger's classifyEventTokens)
 		switch e.Type {
-		case rack.EventPhase:
+		case belaykit.EventAssistant:
+			p.outputTokens += belaykit.EstimateTokens(e.Text)
+		case belaykit.EventToolUse:
+			p.outputTokens += belaykit.EstimateTokens(e.ToolName) + belaykit.EstimateTokens(string(e.ToolInput))
+		case belaykit.EventToolResult:
+			p.inputTokens += belaykit.EstimateTokens(e.Text)
+		case belaykit.EventSystem:
+			p.inputTokens += belaykit.EstimateTokens(e.Subtype) + belaykit.EstimateTokens(e.SessionID)
+		case belaykit.EventResult, belaykit.EventResultError:
+			p.inputTokens += belaykit.EstimateTokens(e.Text)
+		}
+
+		switch e.Type {
+		case belaykit.EventPhase:
 			p.handlePhase(e)
-		case rack.EventToolUse:
+		case belaykit.EventToolUse:
 			p.handleToolUse(e)
-		case rack.EventToolResult:
+		case belaykit.EventToolResult:
 			p.handleToolResult(e)
 		}
 	}
 }
 
-func (p *Provider) handlePhase(e rack.Event) {
+func (p *Provider) handlePhase(e belaykit.Event) {
 	// Finalize the previous phase
 	p.finalizeCurrentPhase()
 
@@ -207,7 +257,7 @@ func (p *Provider) handlePhase(e rack.Event) {
 	p.root.Children = append(p.root.Children, p.currentPhase)
 }
 
-func (p *Provider) handleToolUse(e rack.Event) {
+func (p *Provider) handleToolUse(e belaykit.Event) {
 	if p.currentPhase == nil {
 		// Create a default phase if tools are used without an explicit phase
 		p.currentPhase = &traceNode{
@@ -220,16 +270,19 @@ func (p *Provider) handleToolUse(e rack.Event) {
 	}
 
 	node := &traceNode{
-		ID:        shortID(),
-		NodeType:  "tool_call",
-		AgentName: e.ToolName,
+		ID:            shortID(),
+		NodeType:      "tool_call",
+		AgentName:     e.ToolName,
+		InputTokens:   p.inputTokens,
+		OutputTokens:  p.outputTokens,
+		ContextWindow: p.contextWindow,
 	}
 	p.toolStart[e.ToolID] = time.Now()
 	p.toolNodes[e.ToolID] = node
 	p.currentPhase.Children = append(p.currentPhase.Children, node)
 }
 
-func (p *Provider) handleToolResult(e rack.Event) {
+func (p *Provider) handleToolResult(e belaykit.Event) {
 	node, ok := p.toolNodes[e.ToolID]
 	if !ok {
 		return
